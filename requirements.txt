@@ -1,0 +1,11 @@
+pandas>=2.0
+geopandas>=0.14
+shapely>=2.0
+pyarrow>=14.0
+requests>=2.31
+fastapi>=0.110
+uvicorn>=0.27
+kafka-python>=2.0.2
+numpy>=1.26
+plotly>=5.18
+jupyter>=1.0
