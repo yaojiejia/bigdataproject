@@ -11,7 +11,7 @@ An end-to-end big-data pipeline and interactive map that helps newcomers evaluat
 5. **Combines them** into a unified **newcomer score** (z-scored, weighted, 0–100).
 6. **Streams** a simulated 311 feed through Kafka → Spark Structured Streaming with 5-minute tumbling windows.
 7. **Serves** results via a **FastAPI** backend and renders them on an **interactive Leaflet map** with metric toggles and click-through detail.
-8. **Explains** the results through an analytics dashboard (`/dashboard.html`) and a Jupyter notebook (`notebooks/analysis.ipynb`) that both render the same four charts — distribution, top/bottom 10, by-borough box plots, and a correlation heatmap — via a shared `pipeline.analytics` module, so the web and notebook views are guaranteed to match.
+8. **Explains** the results through an analytics dashboard (`/dashboard.html`) and a Jupyter notebook (`notebooks/analysis.ipynb`) that both render the same five charts — distribution, top/bottom 10, by-borough box plots, a correlation heatmap, and a rent-vs-feature trend line with an OLS prediction — via a shared `pipeline.analytics` module, so the web and notebook views are guaranteed to match.
 
 ## Architecture
 
@@ -142,11 +142,11 @@ make web                 # http://localhost:5173
 
 Open <http://localhost:5173/> in your browser. The map loads `/neighborhoods?metric=score` from the API; switch metrics in the sidebar dropdown (Newcomer Score, Crime, Food Safety, Recent 311, Median Rent).
 
-Click **Open analytics dashboard** in the sidebar (or go to <http://localhost:5173/dashboard.html>) to see the four analytical charts: distribution histogram, top/bottom 10 NTAs, by-borough box plots, and input-feature correlation heatmap.
+Click **Open analytics dashboard** in the sidebar (or go to <http://localhost:5173/dashboard.html>) to see the five analytical charts: distribution histogram, top/bottom 10 NTAs, by-borough box plots, input-feature correlation heatmap, and a rent-vs-feature trend chart with an OLS prediction (pick a predictor — crime, felony share, inspection score, critical rate, or 311 rate — and the chart shows a decile-binned median rent line with an IQR band, a best-fit line with slope and R², and every NTA as a borough-coloured dot).
 
 ### The notebook — same charts, more depth
 
-The dashboard has a Python twin at `notebooks/analysis.ipynb`. Both call the same `pipeline.analytics` functions, so the four shared charts render pixel-for-pixel identically. The notebook adds sub-score decomposition, a safety-vs-affordability scatter, and written interpretation.
+The dashboard has a Python twin at `notebooks/analysis.ipynb`. Both call the same `pipeline.analytics` functions, so the five shared charts render pixel-for-pixel identically. The notebook adds a table of OLS fit parameters for every rent predictor, sub-score decomposition, a safety-vs-affordability scatter, an outlier rank-diff analysis, and written interpretation.
 
 ```bash
 # From the project root, with the venv active:
@@ -175,6 +175,7 @@ make stream-down         # docker compose down
 | `GET /analytics/top-bottom?metric=...&n=10` | Plotly figure JSON: top-N vs. bottom-N NTAs |
 | `GET /analytics/by-borough?metric=...` | Plotly figure JSON: box plot by borough |
 | `GET /analytics/correlation` | Plotly figure JSON: correlation heatmap of the six input features |
+| `GET /analytics/rent-vs?feature=...` | Plotly figure JSON: median rent vs one of five predictors (`crimes_per_1k`, `felony_share`, `avg_score`, `critical_rate`, `complaints_per_1k`) — decile-binned trend line + IQR band + OLS fit |
 
 ## Running on Dataproc (optional)
 

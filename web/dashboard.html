@@ -9,7 +9,7 @@
     <link rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
     <link rel="stylesheet" href="style.css?v=2" />
-    <link rel="stylesheet" href="dashboard.css?v=1" />
+    <link rel="stylesheet" href="dashboard.css?v=2" />
   </head>
   <body class="dashboard-body">
     <header class="dash-header">
@@ -93,6 +93,32 @@
           </div>
           <div id="fig-correlation" class="chart-frame"></div>
         </div>
+
+        <div class="chart-card chart-card-wide">
+          <div class="chart-card-head">
+            <div class="chart-card-head-row">
+              <div>
+                <h2>Rent vs raw features — trend &amp; prediction</h2>
+                <p class="chart-hint">
+                  Pick a predictor. Purple line = median rent per decile bin
+                  of the feature (the headline trend). Shaded band = IQR of
+                  rent inside each bin. Dashed green line = OLS best fit, with
+                  the slope, R², and a plain-English prediction shown in the
+                  top-right annotation. Dots are individual NTAs coloured by
+                  borough.
+                </p>
+              </div>
+              <div class="predictor-pills" id="predictor-pills">
+                <button data-feature="crimes_per_1k" class="active">Crime rate</button>
+                <button data-feature="felony_share">Felony share</button>
+                <button data-feature="avg_score">Inspection score</button>
+                <button data-feature="critical_rate">Critical rate</button>
+                <button data-feature="complaints_per_1k">311 rate</button>
+              </div>
+            </div>
+          </div>
+          <div id="fig-rent-vs" class="chart-frame chart-frame-tall"></div>
+        </div>
       </section>
 
       <footer class="dash-footer">
@@ -102,6 +128,6 @@
     </main>
 
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
-    <script src="dashboard.js?v=1"></script>
+    <script src="dashboard.js?v=2"></script>
   </body>
 </html>

@@ -185,8 +185,54 @@ body.dashboard-body {
   flex: 1;
   min-height: 380px;
 }
+.chart-frame-tall {
+  min-height: 480px;
+}
 .chart-frame .plotly .modebar {
   background: transparent !important;
+}
+
+/* Wide card for the rent-vs predictor chart — spans full row of the grid. */
+.chart-card-wide {
+  grid-column: 1 / -1;
+  min-height: 560px;
+}
+.chart-card-head-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+/* Predictor pill selector — same visual language as .metric-pills. */
+.predictor-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-self: flex-start;
+}
+.predictor-pills button {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elev-2, var(--bg-elev));
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+.predictor-pills button:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+.predictor-pills button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0b1120;
+  font-weight: 600;
 }
 
 .chart-error {

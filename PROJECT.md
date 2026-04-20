@@ -104,7 +104,7 @@ All four inputs are downloaded as CSV by `data_ingest/alexj/download.py` into `d
 | Message broker | Apache Kafka | — | `kafka/docker-compose.yml` — topic `complaints311` |
 | API | FastAPI + uvicorn | Python | `api/main.py` on port 8765 |
 | Frontend map | Leaflet + plain JS | JavaScript | `web/index.html` — choropleth, click-through detail |
-| Frontend dashboard | Plotly.js | JavaScript | `web/dashboard.html` — 4 analytical charts |
+| Frontend dashboard | Plotly.js | JavaScript | `web/dashboard.html` — 5 analytical charts |
 | Analytical figures | Plotly (Python) | Python | `pipeline/analytics.py` — shared by API **and** notebook |
 | Narrative notebook | Jupyter | Python | `notebooks/analysis.ipynb` — same 4 charts + deeper analysis |
 | Storage | Parquet | — | every stage reads and writes Parquet |
@@ -213,19 +213,24 @@ Per-capita rates use population values from `data/geo/nta_population.csv`; if th
 
 The raw map answers *"where is this metric high or low?"*. The dashboard answers the analytical questions behind it: *how is the metric distributed, which neighborhoods are outliers, does the pattern hold across boroughs, and which inputs correlate?*
 
-`pipeline/analytics.py` is a single module that builds four Plotly figures from `newcomer_score.parquet`:
+`pipeline/analytics.py` is a single module that builds five Plotly figures from `newcomer_score.parquet`:
 
 1. **Distribution** — histogram of the selected metric across all 256 NTAs, annotated with mean and median.
 2. **Top vs. bottom 10** — horizontal bar charts of the best- and worst-ranked NTAs; "best" flips direction based on whether the metric is higher-is-better (score) or lower-is-better (crime, rent, 311, critical rate).
 3. **By borough** — box plot per borough with every NTA as a jittered point, ordered by median.
 4. **Input correlation** — 6×6 Pearson heatmap of the inputs that feed the Newcomer Score.
+5. **Rent vs raw features — trend + OLS prediction** — pick a single predictor (crime, felony share, inspection score, critical rate, or 311 rate) and the chart answers *"if this neighbourhood has X of the feature, what's the typical rent?"*. Rendered as:
+   - a decile-binned median rent line (the headline "if X ≈ Y, rent ≈ Z" trend),
+   - a shaded 25th–75th-percentile band showing how tightly rent clusters inside each bin,
+   - a dashed OLS best-fit line with slope, Pearson r, R², and a plain-English sample prediction ("at feature = X, predicted rent = $Y") in the corner annotation,
+   - individual NTAs as borough-coloured dots underneath so outliers stay visible.
 
 Both consumers of the module render the exact same figures:
 
-- `api/main.py` exposes `/analytics/distribution`, `/analytics/top-bottom`, `/analytics/by-borough`, `/analytics/correlation`. Each endpoint returns the Plotly figure JSON (with binary array blocks decoded back to plain arrays for maximum compatibility). The web dashboard at `web/dashboard.html` + `dashboard.js` renders them via Plotly.js 2.35.
-- `notebooks/analysis.ipynb` imports `pipeline.analytics` directly and renders the same figures with `fig.show()`, then layers in notebook-only analysis (sub-score decomposition waterfall, safety-vs-affordability scatter, outlier personas).
+- `api/main.py` exposes `/analytics/distribution`, `/analytics/top-bottom`, `/analytics/by-borough`, `/analytics/correlation`, and `/analytics/rent-vs`. Each endpoint returns the Plotly figure JSON (with binary array blocks decoded back to plain arrays for maximum compatibility). The web dashboard at `web/dashboard.html` + `dashboard.js` renders them via Plotly.js 2.35.
+- `notebooks/analysis.ipynb` imports `pipeline.analytics` directly and renders the same figures with `fig.show()`, then layers in notebook-only analysis (a tabular OLS-fit summary across all five rent predictors, sub-score decomposition waterfall, safety-vs-affordability scatter, outlier personas).
 
-Because both paths run the same Python function, the four shared charts are guaranteed to match between the dashboard and the notebook — same aggregation, same layout, same colors.
+Because both paths run the same Python function, the five shared charts are guaranteed to match between the dashboard and the notebook — same aggregation, same layout, same colors.
 
 ## Directory Layout
 
@@ -312,8 +317,8 @@ make web                       # Leaflet static server on :5173
 
 # Analytics:
 # - http://localhost:5173/              → Leaflet map
-# - http://localhost:5173/dashboard.html → 4 shared Plotly charts (live)
-# - notebooks/analysis.ipynb             → same 4 charts + deeper analysis
+# - http://localhost:5173/dashboard.html → 5 shared Plotly charts (live)
+# - notebooks/analysis.ipynb             → same 5 charts + deeper analysis
 jupyter notebook notebooks/analysis.ipynb
 ```
 

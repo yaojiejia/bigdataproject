@@ -14,6 +14,7 @@ const METRICS = [
 ];
 
 let currentMetric = "score";
+let currentPredictor = "crimes_per_1k";
 
 const PLOTLY_CONFIG = {
   displaylogo: false,
@@ -106,6 +107,11 @@ async function renderStatic() {
   await renderFigure("fig-correlation", "/analytics/correlation");
 }
 
+async function renderRentVs(feature) {
+  const qs = `?feature=${encodeURIComponent(feature)}`;
+  await renderFigure("fig-rent-vs", `/analytics/rent-vs${qs}`);
+}
+
 document.getElementById("metric-pills").addEventListener("click", (ev) => {
   const btn = ev.target.closest("button[data-metric]");
   if (!btn) return;
@@ -116,7 +122,21 @@ document.getElementById("metric-pills").addEventListener("click", (ev) => {
   renderAll(currentMetric);
 });
 
+document.getElementById("predictor-pills").addEventListener("click", (ev) => {
+  const btn = ev.target.closest("button[data-feature]");
+  if (!btn) return;
+  document
+    .querySelectorAll("#predictor-pills button")
+    .forEach((b) => b.classList.toggle("active", b === btn));
+  currentPredictor = btn.dataset.feature;
+  renderRentVs(currentPredictor);
+});
+
 (async function init() {
   await renderSummary();
-  await Promise.all([renderAll(currentMetric), renderStatic()]);
+  await Promise.all([
+    renderAll(currentMetric),
+    renderStatic(),
+    renderRentVs(currentPredictor),
+  ]);
 })();

@@ -206,8 +206,14 @@ Endpoints:
 | `GET /neighborhoods?metric=score\|crime\|food\|rent\|311` | GeoJSON FeatureCollection with selected metric attached to each feature's `properties.metric_value` and the full feature record under `properties.features` |
 | `GET /neighborhood/{nta_code}` | Full feature record for one NTA |
 | `GET /trending?limit=N` | Top N NTAs by complaint count in the most recent streaming window |
+| `GET /analytics/summary` | Per-metric descriptive stats (mean/median/min/max/std) |
+| `GET /analytics/distribution?metric=...` | Plotly figure JSON: histogram across NTAs |
+| `GET /analytics/top-bottom?metric=...&n=10` | Plotly figure JSON: top-N vs. bottom-N NTAs |
+| `GET /analytics/by-borough?metric=...` | Plotly figure JSON: box plot per borough |
+| `GET /analytics/correlation` | Plotly figure JSON: 6×6 Pearson heatmap of input features |
+| `GET /analytics/rent-vs?feature=...` | Plotly figure JSON: median rent as a function of one of five predictors — decile-binned trend line + IQR band + OLS fit |
 
-CORS is open and NaN/Inf are sanitized to `null` so the browser-side JSON parser doesn't choke.
+CORS is open and NaN/Inf are sanitized to `null` so the browser-side JSON parser doesn't choke. All `/analytics/*` figure endpoints call the same builders in `pipeline/analytics.py` that `notebooks/analysis.ipynb` uses, so the web and notebook charts are byte-identical.
 
 ### 8. Frontend
 
@@ -219,6 +225,18 @@ CORS is open and NaN/Inf are sanitized to `null` so the browser-side JSON parser
 4. Click → side panel with all features for that NTA.
 
 A metric dropdown swaps between Newcomer Score, Crime, Food Safety (critical inspection rate), Recent 311 (streaming), and Median Rent.
+
+### 8.5 Analytics dashboard + notebook
+
+`web/dashboard.html` (rendered by `web/dashboard.js` on Plotly.js 2.35) is the analytical twin of the map. It calls the five `/analytics/*` figure endpoints listed above and shows:
+
+1. Distribution histogram with mean / median rules.
+2. Top-vs-bottom 10 bar chart (best/worst direction flips on the metric's `higher_is_better` flag).
+3. By-borough box plot with every NTA as a jittered point, ordered by median.
+4. 6×6 Pearson correlation heatmap of the six Newcomer Score inputs.
+5. Rent-vs-feature trend + OLS prediction — pick one of five predictors (crime rate, felony share, inspection score, critical rate, 311 rate) and the chart returns a decile-binned median-rent line with an IQR band, a dashed OLS best-fit line, and an annotation giving slope, R², and a plain-English rent prediction at the feature's median.
+
+`notebooks/analysis.ipynb` imports the *same* `pipeline.analytics` functions and calls `fig.show()` on the returned Plotly figure objects. Because the builder is a pure function of the parquet, the two surfaces can't drift — if the dashboard changes, the notebook changes, and vice versa. On top of the five shared charts, the notebook layers an OLS-fit summary table over all five rent predictors, sub-score decomposition, a safety-vs-affordability scatter, outlier-persona rank-diff analysis, and written interpretation that doesn't belong on a live page.
 
 ### 9. Orchestration
 

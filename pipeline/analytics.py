@@ -82,6 +82,47 @@ INPUT_FEATURE_LABELS = {
     "median_rent_zori": "Median rent",
 }
 
+# Features that can be used to predict rent. Excludes `median_rent_zori`
+# itself, since predicting rent from rent is silly.
+RENT_PREDICTORS: list[str] = [
+    "crimes_per_1k",
+    "felony_share",
+    "avg_score",
+    "critical_rate",
+    "complaints_per_1k",
+]
+
+# Human-readable X-axis labels + hover-value formatters for each predictor.
+# Kept separate from INPUT_FEATURE_LABELS so the rent-vs chart can use longer,
+# more specific titles ("Crimes per 1,000 residents" vs "Crimes / 1k").
+RENT_PREDICTOR_META: dict[str, dict[str, Any]] = {
+    "crimes_per_1k": {
+        "label": "Crimes per 1,000 residents",
+        "short": "crimes / 1k",
+        "fmt": ".1f",
+    },
+    "felony_share": {
+        "label": "Share of crimes classified as felonies",
+        "short": "felony share",
+        "fmt": ".1%",
+    },
+    "avg_score": {
+        "label": "Average DOHMH inspection score (lower = cleaner)",
+        "short": "inspection score",
+        "fmt": ".1f",
+    },
+    "critical_rate": {
+        "label": "Critical inspection violation rate",
+        "short": "critical rate",
+        "fmt": ".1%",
+    },
+    "complaints_per_1k": {
+        "label": "311 food-safety complaints per 1,000 residents",
+        "short": "311 / 1k",
+        "fmt": ".1f",
+    },
+}
+
 BOROUGH_FROM_CODE = {
     "MN": "Manhattan",
     "BK": "Brooklyn",
@@ -331,6 +372,182 @@ def correlation_fig(df: pd.DataFrame) -> go.Figure:
                    linecolor=COLORS["border"], tickcolor=COLORS["border"]),
         yaxis=dict(autorange="reversed",
                    linecolor=COLORS["border"], tickcolor=COLORS["border"]),
+    ))
+    return fig
+
+
+def rent_vs_feature_fig(df: pd.DataFrame, feature: str, n_bins: int = 10) -> go.Figure:
+    """Line chart: median rent as a function of a single input feature.
+
+    Three layers on the same axes so the reader can triangulate:
+
+    1. **Binned median rent** — NTAs are placed into ``n_bins`` quantile bins
+       of ``feature``; within each bin we take median rent and the 25th/75th
+       percentiles. The line connecting those medians is the answer to
+       "if this neighbourhood has X crime, what's the typical rent?".
+    2. **IQR band** — the shaded area around the line shows the middle 50%
+       of rents in each bin. Tight band = strong relationship; fat band =
+       this feature alone doesn't pin rent down.
+    3. **OLS regression** — a simple best-fit line over the raw (feature,
+       rent) points. The annotation in the corner reports slope, intercept,
+       Pearson r, R², and a plain-English prediction at the feature's median.
+
+    The scatter of individual NTAs is rendered faintly underneath, coloured
+    by borough, so power users can see the cloud behind the aggregate.
+    """
+    if feature not in RENT_PREDICTOR_META:
+        raise ValueError(
+            f"unknown rent predictor {feature!r}; expected one of "
+            f"{sorted(RENT_PREDICTOR_META)}"
+        )
+    meta = RENT_PREDICTOR_META[feature]
+
+    d = with_borough(df).dropna(subset=[feature, "median_rent_zori"]).copy()
+    if d.empty:
+        fig = go.Figure()
+        fig.update_layout(**_base_layout(
+            f"Rent vs {meta['short']} — no data",
+            xaxis_title=meta["label"],
+            yaxis_title="Median rent ($/mo)",
+        ))
+        return fig
+
+    x_all = d[feature].astype(float).to_numpy()
+    y_all = d["median_rent_zori"].astype(float).to_numpy()
+
+    # --- Layer 1+2: quantile-binned median + IQR band -----------------------
+    # qcut with duplicates='drop' handles features (like felony_share) whose
+    # lower tail has many ties — we'd rather get fewer bins than crash.
+    try:
+        bins = pd.qcut(d[feature], q=n_bins, duplicates="drop")
+    except ValueError:
+        bins = pd.qcut(d[feature].rank(method="first"), q=n_bins, duplicates="drop")
+    grouped = d.groupby(bins, observed=True).agg(
+        x_mid=(feature, "median"),
+        rent_median=("median_rent_zori", "median"),
+        rent_q1=("median_rent_zori", lambda s: float(np.percentile(s, 25))),
+        rent_q3=("median_rent_zori", lambda s: float(np.percentile(s, 75))),
+        n_ntas=("nta_code", "count"),
+    ).reset_index(drop=True).sort_values("x_mid")
+
+    x_bin = grouped["x_mid"].to_numpy()
+    y_bin = grouped["rent_median"].to_numpy()
+    y_q1 = grouped["rent_q1"].to_numpy()
+    y_q3 = grouped["rent_q3"].to_numpy()
+
+    # --- Layer 3: OLS regression on the raw points --------------------------
+    slope, intercept = np.polyfit(x_all, y_all, 1)
+    pearson_r = float(np.corrcoef(x_all, y_all)[0, 1])
+    r2 = pearson_r ** 2
+    x_fit = np.linspace(float(x_all.min()), float(x_all.max()), 100)
+    y_fit = slope * x_fit + intercept
+    x_example = float(np.median(x_all))
+    y_example = float(slope * x_example + intercept)
+
+    # --- Figure assembly ----------------------------------------------------
+    fig = go.Figure()
+
+    # Faint scatter underneath, coloured by borough.
+    for borough, sub in d.groupby("borough"):
+        fig.add_trace(go.Scatter(
+            x=sub[feature],
+            y=sub["median_rent_zori"],
+            mode="markers",
+            name=borough,
+            marker=dict(
+                color=BOROUGH_COLORS.get(borough, COLORS["accent"]),
+                size=6,
+                opacity=0.45,
+                line=dict(color=COLORS["bg"], width=0.5),
+            ),
+            text=sub["nta_name"],
+            hovertemplate=(
+                "<b>%{text}</b><br>"
+                + meta["short"] + f": %{{x:{meta['fmt']}}}"
+                + "<br>median rent: $%{y:,.0f}"
+                + f"<extra>{borough}</extra>"
+            ),
+        ))
+
+    # IQR band (Q3 high, then Q1 reversed, filled between).
+    fig.add_trace(go.Scatter(
+        x=np.concatenate([x_bin, x_bin[::-1]]),
+        y=np.concatenate([y_q3, y_q1[::-1]]),
+        fill="toself",
+        fillcolor="rgba(129,140,248,0.18)",
+        line=dict(color="rgba(0,0,0,0)"),
+        hoverinfo="skip",
+        name="IQR band (25th–75th)",
+        showlegend=True,
+    ))
+
+    # Binned median line — the headline trend.
+    fig.add_trace(go.Scatter(
+        x=x_bin,
+        y=y_bin,
+        mode="lines+markers",
+        name="Binned median rent",
+        line=dict(color=COLORS["accent"], width=3),
+        marker=dict(size=8, color=COLORS["accent"],
+                    line=dict(color=COLORS["bg"], width=1.5)),
+        customdata=np.stack([grouped["n_ntas"].to_numpy(),
+                             y_q1, y_q3], axis=-1),
+        hovertemplate=(
+            f"<b>bin median {meta['short']}</b>: %{{x:{meta['fmt']}}}"
+            "<br>median rent: $%{y:,.0f}"
+            "<br>IQR: $%{customdata[1]:,.0f} – $%{customdata[2]:,.0f}"
+            "<br>NTAs in bin: %{customdata[0]}"
+            "<extra></extra>"
+        ),
+    ))
+
+    # OLS fit on top (dashed so it doesn't compete visually with the bins).
+    fig.add_trace(go.Scatter(
+        x=x_fit,
+        y=y_fit,
+        mode="lines",
+        name=f"OLS fit (R² = {r2:.2f})",
+        line=dict(color=COLORS["good"], width=2, dash="dash"),
+        hovertemplate=(
+            f"{meta['short']}: %{{x:{meta['fmt']}}}"
+            "<br>predicted rent: $%{y:,.0f}<extra>OLS fit</extra>"
+        ),
+    ))
+
+    # Plain-English annotation. Guard against pathological cases where the
+    # intercept is negative (chart shows $0 floor either way) by clamping
+    # the example prediction to a sane integer string.
+    slope_line = (
+        f"Δrent ≈ <b>${slope:+,.0f}</b> per unit {meta['short']}"
+    )
+    prediction_line = (
+        f"At {meta['short']} = {x_example:{meta['fmt']}}, "
+        f"model predicts <b>${max(0, y_example):,.0f}/mo</b>"
+    )
+    r2_line = f"Pearson r = {pearson_r:+.2f}, R² = {r2:.2f}"
+    annotation_text = "<br>".join([slope_line, prediction_line, r2_line])
+
+    fig.add_annotation(
+        xref="paper", yref="paper",
+        x=0.99, y=0.99, xanchor="right", yanchor="top",
+        text=annotation_text,
+        showarrow=False,
+        align="right",
+        bgcolor="rgba(15,23,42,0.85)",
+        bordercolor=COLORS["border"],
+        borderwidth=1,
+        borderpad=8,
+        font=dict(color=COLORS["text"], size=11),
+    )
+
+    fig.update_layout(**_base_layout(
+        f"Median rent vs {meta['short']} — {len(d)} NTAs",
+        xaxis_title=meta["label"],
+        yaxis_title="Median rent (ZORI, $/month)",
+        height=460,
+        legend=dict(orientation="h", y=-0.18, x=0,
+                    bgcolor="rgba(0,0,0,0)",
+                    bordercolor=COLORS["border"], borderwidth=1),
     ))
     return fig
 

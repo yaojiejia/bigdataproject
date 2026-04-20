@@ -20,6 +20,10 @@ Endpoints:
       -> Plotly figure JSON: box plot by borough
   GET /analytics/correlation
       -> Plotly figure JSON: correlation heatmap of the six input features
+  GET /analytics/rent-vs?feature=crimes_per_1k|felony_share|avg_score|
+                                 critical_rate|complaints_per_1k
+      -> Plotly figure JSON: median rent as a function of a single input
+         feature — quantile-binned trend line with IQR band and an OLS fit
 
 Every `/analytics/*` endpoint that returns a figure uses the exact same
 builder functions as `notebooks/analysis.ipynb` (from `pipeline.analytics`),
@@ -144,6 +148,7 @@ def neighborhood(nta_code: str) -> dict:
 
 
 _METRIC_PATTERN = "^(score|crime|food|rent|311)$"
+_RENT_PREDICTOR_PATTERN = "^(crimes_per_1k|felony_share|avg_score|critical_rate|complaints_per_1k)$"
 
 _BDATA_DTYPE_MAP = {
     "f8": "<f8", "f4": "<f4",
@@ -218,6 +223,14 @@ def analytics_by_borough(
 @app.get("/analytics/correlation")
 def analytics_correlation() -> Response:
     fig = analytics.correlation_fig(STATE["scores"])
+    return _figure_response(fig)
+
+
+@app.get("/analytics/rent-vs")
+def analytics_rent_vs(
+    feature: str = Query("crimes_per_1k", pattern=_RENT_PREDICTOR_PATTERN),
+) -> Response:
+    fig = analytics.rent_vs_feature_fig(STATE["scores"], feature)
     return _figure_response(fig)
 
 

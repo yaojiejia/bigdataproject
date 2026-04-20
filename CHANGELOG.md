@@ -11,6 +11,32 @@ string surfaces every fix.
 
 ## Pipeline
 
+### Dashboard + notebook: rent-vs-feature prediction chart
+
+**Before:** The analytics surface answered descriptive questions only —
+distribution, top/bottom, by-borough, correlation. Nothing in the charts
+said "given feature X, what rent should we expect?".
+
+**Change:** Added `rent_vs_feature_fig(df, feature)` to
+`pipeline/analytics.py`. For each predictor (crimes_per_1k, felony_share,
+avg_score, critical_rate, complaints_per_1k) it builds one figure that
+layers (1) a decile-binned median rent line as the headline trend, (2) a
+shaded IQR band over the bins, (3) a dashed OLS best-fit line with slope,
+Pearson r, R², and a plain-English prediction in a corner annotation, and
+(4) per-borough NTA scatter underneath for transparency.
+
+Wired through as `GET /analytics/rent-vs?feature=...` (validated against
+the five-predictor allowlist — `median_rent_zori` is rejected so nobody
+predicts rent from rent by accident), a new full-width chart card on
+`dashboard.html` with a predictor pill selector, and a new section 7
+("Figure 5") in `notebooks/analysis.ipynb` that loops the builder over all
+five predictors and then prints a summary table of slope / R² / predicted
+rent at each feature's median.
+
+**Lesson:** Plotly's JSON figure spec is the right sharing boundary between
+a server-rendered dashboard and a notebook — the builder is a pure function
+of the parquet, so the two surfaces literally can't drift.
+
 ### Repo reorganised into `/data_ingest`, `/etl_code`, `/profiling_code`
 
 **Before:** Everything lived together — Scala jobs at the repo root, Python
