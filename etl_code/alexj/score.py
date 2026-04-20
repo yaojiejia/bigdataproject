@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from .paths import NEIGHBORHOOD_FEATURES, NEWCOMER_SCORE, ensure_dirs
+from pipeline.paths import NEIGHBORHOOD_FEATURES, NEWCOMER_SCORE, ensure_dirs
 
 # Weights sum to 1.0
 WEIGHTS = {

@@ -15,7 +15,7 @@ import geopandas as gpd
 import pandas as pd
 from shapely.geometry import Point
 
-from .paths import (
+from pipeline.paths import (
     CLEAN_COMPLAINTS311,
     CLEAN_CRIME,
     CLEAN_RENT,
@@ -28,7 +28,7 @@ from .paths import (
     ZIP_TO_NTA,
     ensure_dirs,
 )
-from . import geo_download
+from data_ingest.alexj import geo_download
 
 NTA_NAME_FIELDS = ("ntaname", "NTAName", "nta_name", "NTA_NAME")
 NTA_CODE_FIELDS = ("ntacode", "NTACode", "nta2020", "NTA2020", "nta_code")

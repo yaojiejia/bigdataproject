@@ -74,7 +74,7 @@ def _sanitize(value: Any) -> Any:
 
 def _load_geojson() -> dict:
     if not NTA_GEOJSON.exists():
-        raise RuntimeError(f"missing {NTA_GEOJSON}; run pipeline.geo_download first")
+        raise RuntimeError(f"missing {NTA_GEOJSON}; run `make geo-download` first")
     return json.loads(NTA_GEOJSON.read_text())
 
 

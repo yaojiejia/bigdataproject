@@ -11,7 +11,7 @@ complaints, ≈430 NYC ZIPs of rent). It is not a scale demo; it is an
 
 ## 1. Spark configuration (`SPARK_TUNE` in the Makefile)
 
-All three Scala Spark jobs (`Clean.scala`, `Features.scala`, `Consumer.scala`)
+All three Scala Spark jobs (`etl_code/alexj/Clean.scala`, `etl_code/alexj/Features.scala`, `etl_code/alexj/Consumer.scala`)
 are launched with the same tuning flags, defined once in the Makefile as
 `SPARK_TUNE` and passed to `spark-shell --conf` on every invocation. This
 way the configs live in exactly one place, apply to every batch and
@@ -71,7 +71,7 @@ Raised from the 10 MB default so the small lookup tables in this pipeline
 
 ### Geocoding uses geopandas, not Spark
 
-`pipeline/geocode.py` does the point-in-polygon join in a single-process
+`etl_code/alexj/geocode.py` does the point-in-polygon join in a single-process
 `geopandas.sjoin` rather than Spark (via Sedona or ST_Contains). Why:
 
 - After cleaning, each point dataset fits in memory (~500k × a dozen
@@ -86,7 +86,7 @@ move is Sedona, not hand-rolled shuffling.
 
 ### Scoring uses pandas, not Spark
 
-`pipeline/score.py` input is ~260 rows (one per NTA). Spinning up a
+`etl_code/alexj/score.py` input is ~260 rows (one per NTA). Spinning up a
 SparkContext to z-score a 260-row DataFrame is pure overhead. The
 boundary between "use Spark" and "use pandas" is set deliberately at
 `data/scores/neighborhood_features.parquet` — everything upstream of
@@ -94,7 +94,7 @@ that file is Spark, everything downstream is pandas.
 
 ### Streaming layer: two sinks, two processing-time triggers
 
-`Consumer.scala` writes two sinks from the same windowed aggregation:
+`etl_code/alexj/Consumer.scala` writes two sinks from the same windowed aggregation:
 
 1. **`data/stream/windowed/`** — append-mode Parquet, 30-second micro-batches.
    This is the tamper-proof audit log; parallelism matters here so we
@@ -119,7 +119,7 @@ future-work item.
 
 To reproduce the shape of the scaling curve today, add `.sample(false, 0.1,
 42L)`, `.sample(false, 0.5, 42L)`, `.sample(false, 1.0, 42L)` after the
-`readCsv(...)` call in `Clean.scala` and time three runs by hand:
+`readCsv(...)` call in `etl_code/alexj/Clean.scala` and time three runs by hand:
 
 ```bash
 time make clean   # measure each pass; compare throughput
@@ -182,18 +182,19 @@ Rough sketch, if this project grew by an order of magnitude:
 | API | single uvicorn | uvicorn behind nginx, multi-worker |
 | Streaming | Kafka in Docker | managed Kafka / Pub/Sub |
 
-All three production Scala jobs (`Clean.scala`, `Features.scala`,
-`Consumer.scala`) support Dataproc via the `HDFS_USER` environment
-variable: when set, raw, cleaned, and enriched paths all switch from
-`$DATA_ROOT/...` to `hdfs:///user/$HDFS_USER/...` with no code change.
-`FirstCode.scala` and `CountRecs.scala` are earlier exploration scripts
-kept for reference.
+All three production Scala jobs (`etl_code/alexj/Clean.scala`,
+`etl_code/alexj/Features.scala`, `etl_code/alexj/Consumer.scala`) support
+Dataproc via the `HDFS_USER` environment variable: when set, raw, cleaned,
+and enriched paths all switch from `$DATA_ROOT/...` to
+`hdfs:///user/$HDFS_USER/...` with no code change. The two profiling
+scripts in `profiling_code/alexj/` (`FirstCode.scala`, `CountRecs.scala`)
+use the same convention.
 
 ## 5. Reproducing the scaling numbers
 
 See the note in section 3: the dedicated Python benchmark harness was
 removed with the rest of the PySpark jobs. For ad-hoc measurement today,
-sample inside `Clean.scala` or use Spark's UI at `http://localhost:4040`
+sample inside `etl_code/alexj/Clean.scala` or use Spark's UI at `http://localhost:4040`
 while `make clean` is running to get the authoritative per-stage
 breakdown. The point isn't the exact milliseconds; it's that the
 *shape* of the scaling curve is reproducible.

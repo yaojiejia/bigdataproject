@@ -11,12 +11,37 @@ string surfaces every fix.
 
 ## Pipeline
 
+### Repo reorganised into `/data_ingest`, `/etl_code`, `/profiling_code`
+
+**Before:** Everything lived together — Scala jobs at the repo root, Python
+modules under `pipeline/`, profiling scripts indistinguishable from
+production code at a glance.
+
+**Change:** Adopted the assignment's required layout.
+- `data_ingest/alexj/` — `download.py`, `geo_download.py`
+- `etl_code/alexj/` — `Clean.scala`, `Features.scala`, `Consumer.scala`, `geocode.py`, `score.py`
+- `profiling_code/alexj/` — `FirstCode.scala`, `CountRecs.scala`
+- `pipeline/` — now only shared infrastructure (`paths.py`, `analytics.py`)
+
+Python imports moved from relative (`from .paths import ...`) to absolute
+(`from pipeline.paths import ...`) so the moved modules can be run as
+`python -m data_ingest.alexj.download`, etc. The Makefile targets point at
+the new paths. Each of the three top-level directories has a `README.md`
+explaining what lives there; each per-member subdirectory has its own
+`README.md` with a script-by-script breakdown.
+
+**Lesson:** Rubric-shaped layouts aren't just for graders. The three-way
+split (ingest / ETL / profiling) makes it obvious which scripts are on the
+critical path of `make pipeline` and which are exploratory one-offs, and
+forces a clean boundary between "discover the data" and "transform the
+data."
+
 ### Clean.scala — `cleanRestaurants`: preserve Lat/Long
 
 **Before:** The restaurant projection dropped `Latitude` / `Longitude`,
 mirroring an earlier version of the Scala cleaner. Cleaning succeeded.
 
-**Symptom:** `pipeline/geocode.py` blew up with
+**Symptom:** `etl_code/alexj/geocode.py` (then at `pipeline/geocode.py`) blew up with
 `KeyError: ['Longitude', 'Latitude']` on the restaurants dataset.
 Crime and 311 worked because their cleaners kept the columns.
 
@@ -26,8 +51,8 @@ The broken projection is preserved inline as a commented warning.
 
 **Lesson:** Cleaner contracts aren't self-enforcing across stage boundaries.
 If feature contracts mattered more here we'd add a schema check in
-`pipeline/geocode.py` that fails fast with a readable error instead of a
-pandas `KeyError`.
+`etl_code/alexj/geocode.py` that fails fast with a readable error instead
+of a pandas `KeyError`.
 
 ### Features.scala — tolerate nanosecond timestamps from pandas
 
@@ -149,7 +174,7 @@ it's not a Spark job. Everything that actually *uses* Spark is Scala.
 
 ## Scoring
 
-### pipeline/score.py — NaN imputation before z-score
+### etl_code/alexj/score.py — NaN imputation before z-score
 
 **Before:** z-score on raw columns. A neighborhood with NULL `median_rent_zori`
 (no Zillow coverage) got `z = NaN` and cascaded into the final score.

@@ -17,63 +17,72 @@ An end-to-end big-data pipeline and interactive map that helps newcomers evaluat
 
 ```
 raw CSVs (NYC Open Data, Zillow)
-        │   pipeline/download.py                (Python, HTTP)
+        │   data_ingest/alexj/download.py            (Python, HTTP)
         ▼
 data/raw/
-        │   Clean.scala                         (Scala + Spark)
+        │   etl_code/alexj/Clean.scala               (Scala + Spark)
         ▼
 data/cleaned/
-        │   pipeline/geocode.py                 (Python, geopandas sjoin)
+        │   etl_code/alexj/geocode.py                (Python, geopandas sjoin)
         ▼
 data/enriched/
-        │   Features.scala                      (Scala + Spark)
+        │   etl_code/alexj/Features.scala            (Scala + Spark)
         ▼
 data/scores/neighborhood_features.parquet
-        │   pipeline/score.py                   (Python, pandas z-score + weights)
+        │   etl_code/alexj/score.py                  (Python, pandas z-score + weights)
         ▼
 data/scores/newcomer_score.parquet ──► FastAPI  ──► Leaflet map
                                         ▲
                                         │ /trending
-                        Consumer.scala (Scala + Structured Streaming)
+                    etl_code/alexj/Consumer.scala    (Scala + Structured Streaming)
                                         ▲
                                         │ Kafka topic: complaints311
-                        stream/producer.py       (Python, kafka client)
+                    stream/producer.py               (Python, kafka client)
 ```
 
 **Language split:** every Spark job is Scala (`Clean.scala`, `Features.scala`, `Consumer.scala`). Everything else — HTTP ingestion, spatial join (geopandas), 260-row scoring (pandas), Kafka producer, FastAPI, frontend — is Python or JS, because that's what each tool is best at.
 
 ## Project layout
 
+The top-level layout follows the assignment rubric: `/data_ingest`, `/etl_code`, and `/profiling_code`, each with a per-member subdirectory.
+
 ```
 bigdataproject/
-  Clean.scala          # Spark batch: 4 datasets -> cleaned parquet
-  Features.scala       # Spark batch: per-NTA aggregation + join
-  Consumer.scala       # Spark Structured Streaming: Kafka -> windows
-  FirstCode.scala      # earlier Scala exploration (stats, RDD map/reduce)
-  CountRecs.scala      # earlier Scala exploration (schemas, distinct values)
+  data_ingest/alexj/
+    download.py          # HTTP fetch of 4 raw CSVs
+    geo_download.py      # HTTP fetch of NTA GeoJSON + population template
 
-  pipeline/
-    download.py        # HTTP download of 4 raw CSVs
-    geo_download.py    # HTTP download of NTA GeoJSON + population template
-    geocode.py         # geopandas point-in-polygon; ZIP->NTA lookup
-    score.py           # pandas z-score + weighted sum -> 0-100 score
-    analytics.py       # shared dashboard figure builders (Plotly)
-    paths.py           # shared filesystem paths
+  etl_code/alexj/
+    Clean.scala          # Spark batch: 4 datasets -> cleaned parquet
+    Features.scala       # Spark batch: per-NTA aggregation + join
+    Consumer.scala       # Spark Structured Streaming: Kafka -> windows
+    geocode.py           # geopandas point-in-polygon; ZIP->NTA lookup
+    score.py             # pandas z-score + weighted sum -> 0-100 score
+
+  profiling_code/alexj/
+    FirstCode.scala      # stats (mean/median/mode/stddev) + RDD map/reduce
+    CountRecs.scala      # schemas + record counts + distinct-value surveys
+
+  pipeline/              # shared infrastructure & serving layer
+    paths.py             # canonical filesystem paths (imported everywhere)
+    analytics.py         # shared dashboard figure builders (Plotly)
 
   stream/
-    producer.py        # Kafka producer (replays 311 onto topic)
+    producer.py          # Kafka producer (replays 311 onto topic)
 
   notebooks/
-    analysis.ipynb     # analytical notebook; imports pipeline.analytics
+    analysis.ipynb       # analytical notebook; imports pipeline.analytics
 
-  api/main.py          # FastAPI on :8765 (map API + /analytics/*)
-  web/                 # Leaflet map + Plotly dashboard (:5173)
-  kafka/               # docker-compose.yml (Zookeeper + Kafka)
-  Makefile             # one target per stage; `make help`
+  api/main.py            # FastAPI on :8765 (map API + /analytics/*)
+  web/                   # Leaflet map + Plotly dashboard (:5173)
+  kafka/                 # docker-compose.yml (Zookeeper + Kafka)
+  Makefile               # one target per stage; `make help`
 
   data/
     raw/ cleaned/ enriched/ scores/ stream/ geo/
 ```
+
+Each of the three assignment directories has its own `README.md` explaining what lives in it and how to run each script.
 
 ## Prerequisites
 
@@ -173,8 +182,8 @@ The Scala scripts are location-transparent. Set `HDFS_USER` and paths swap from 
 
 ```bash
 # On the Dataproc master, after uploading raw CSVs to HDFS:
-HDFS_USER=$USER spark-shell --master yarn --deploy-mode client -i Clean.scala
-HDFS_USER=$USER spark-shell --master yarn --deploy-mode client -i Features.scala
+HDFS_USER=$USER spark-shell --master yarn --deploy-mode client -i etl_code/alexj/Clean.scala
+HDFS_USER=$USER spark-shell --master yarn --deploy-mode client -i etl_code/alexj/Features.scala
 ```
 
 ## Data sources
@@ -190,5 +199,5 @@ HDFS_USER=$USER spark-shell --master yarn --deploy-mode client -i Features.scala
 ## Notes
 
 - Population is optional. Drop a populated CSV at `data/geo/nta_population.csv` (columns `nta_code,nta_name,population`) and `Features.scala` will compute per-capita rates. Otherwise raw totals are used as the intensity signal.
-- ZIP → NTA mapping is derived from the restaurant dataset's points (each ZIP assigned to the NTA containing the plurality of its restaurants). Replace `pipeline/geocode.py::build_zip_to_nta` if you have a proper ZCTA shapefile.
-- Scala Spark jobs are invoked via `spark-shell -i File.scala` with tuning configs (shuffle partitions, AQE, broadcast threshold, driver memory) applied from the Makefile's `SPARK_TUNE` variable. See `SCALABILITY.md`.
+- ZIP → NTA mapping is derived from the restaurant dataset's points (each ZIP assigned to the NTA containing the plurality of its restaurants). Replace `etl_code/alexj/geocode.py::build_zip_to_nta` if you have a proper ZCTA shapefile.
+- Scala Spark jobs are invoked via `spark-shell -i <path>.scala` with tuning configs (shuffle partitions, AQE, broadcast threshold, driver memory) applied from the Makefile's `SPARK_TUNE` variable. See `SCALABILITY.md`.

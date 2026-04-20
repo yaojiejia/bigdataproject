@@ -1,17 +1,19 @@
 // ============================================================
 // Clean.scala — Full batch cleaner for all four datasets.
 // Run with:
-//   spark-shell --master local[*] -i Clean.scala
+//   spark-shell --master local[*] -i etl_code/alexj/Clean.scala
 // or on Dataproc:
-//   HDFS_USER=you spark-shell --master yarn --deploy-mode client -i Clean.scala
+//   HDFS_USER=you spark-shell --master yarn --deploy-mode client -i etl_code/alexj/Clean.scala
+// Or just: make clean
 // ============================================================
 //
 // Reads four raw inputs from $DATA_ROOT/raw (local) or hdfs:///user/$HDFS_USER/data
 // (cluster), and writes cleaned Parquet to data/cleaned/{crime,restaurants,
 // complaints311,rent}.
 //
-// Schemas below are fixed contracts — they are what pipeline/geocode.py and
-// Features.scala expect. If you change a schema here, update both consumers.
+// Schemas below are fixed contracts — they are what etl_code/alexj/geocode.py
+// and etl_code/alexj/Features.scala expect. If you change a schema here,
+// update both consumers.
 //
 // Iteration note: an earlier version of clean_restaurants dropped Latitude and
 // Longitude in its projection. That silently broke geocoding downstream because

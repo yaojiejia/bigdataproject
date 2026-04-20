@@ -1,6 +1,7 @@
 // ============================================================
 // Features.scala — Aggregate enriched datasets into one row per NTA.
-// Run with:  spark-shell --master local[*] -i Features.scala
+// Run with:  spark-shell --master local[*] -i etl_code/alexj/Features.scala
+//        or: make features
 // ============================================================
 //
 // Input  : data/enriched/{crime,restaurants,complaints311,rent} (parquet)

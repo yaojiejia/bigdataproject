@@ -15,7 +15,7 @@ from pathlib import Path
 
 import requests
 
-from .paths import (
+from pipeline.paths import (
     RAW_COMPLAINTS311,
     RAW_CRIME,
     RAW_RENT,

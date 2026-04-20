@@ -13,7 +13,7 @@ This project develops an interactive, data-driven system designed to help newcom
 | 311 Service Requests (food-safety subset) | NYC Open Data | `erm2-nwe9` | Food-poisoning, food-establishment, rodent, and unsanitary-animal complaints pulled via Socrata `$where` | ~320K rows, ~225 MB |
 | Zillow ZORI (ZIP level) | Zillow Research | `Zip_zori_uc_sfrcondomfr_sm_month.csv` | Monthly Zillow Observed Rent Index by ZIP | ~9 MB (wide format) |
 
-All four inputs are downloaded as CSV by `pipeline/download.py` into `data/raw/`.
+All four inputs are downloaded as CSV by `data_ingest/alexj/download.py` into `data/raw/`.
 
 ### Crime Data — Key Columns
 
@@ -42,29 +42,30 @@ All four inputs are downloaded as CSV by `pipeline/download.py` into `data/raw/`
 ## Architecture
 
 ```
-                                 ┌───────────────────┐
-       NYC Open Data + Zillow    │  NTA GeoJSON      │
-       CSV downloads (Python)    │  (NYC Open Data)  │
-               │                 └─────────┬─────────┘
-               ▼                           │
-         data/raw/                         │
-               │                           │
-               │  Clean.scala              │
+                                       ┌───────────────────┐
+       NYC Open Data + Zillow          │  NTA GeoJSON      │
+       data_ingest/alexj/download.py   │  (NYC Open Data)  │
+               │                       └─────────┬─────────┘
+               ▼                                 │
+         data/raw/                               │
+               │                                 │
+               │  etl_code/alexj/Clean.scala     │
                │  (Scala + Spark, canonical)
-               ▼                           │
-         data/cleaned/                     │
-               │                           │
-               │  pipeline/geocode.py ◄────┘
+               ▼                                 │
+         data/cleaned/                           │
+               │                                 │
+               │  etl_code/alexj/geocode.py ◄────┘
                │  (geopandas sjoin)
                ▼
          data/enriched/   (every row has nta_code)
                │
-               │  Features.scala
+               │  etl_code/alexj/Features.scala
                │  (Scala + Spark, canonical)
                ▼
          data/scores/neighborhood_features.parquet
                │
-               │  pipeline/score.py (pandas z-score + weighted sum)
+               │  etl_code/alexj/score.py
+               │  (pandas z-score + weighted sum)
                ▼                                  ┌─────────────────────┐
          data/scores/newcomer_score.parquet       │ stream/producer.py  │
                │                                  │ (Kafka producer)    │
@@ -75,12 +76,11 @@ All four inputs are downloaded as CSV by `pipeline/download.py` into `data/raw/`
                │                                  │ topic: complaints311│
                │                                  └──────────┬──────────┘
                │                                             ▼
-               │                                  ┌─────────────────────┐
-               │                                  │ Consumer.scala      │
-               │                                  │ (Scala + Spark      │
-               │                                  │  Structured         │
-               │                                  │  Streaming)         │
-               │                                  └──────────┬──────────┘
+               │                                  ┌────────────────────────────┐
+               │                                  │ etl_code/alexj/Consumer.scala
+               │                                  │ (Scala + Spark Structured  │
+               │                                  │  Streaming)                │
+               │                                  └──────────┬─────────────────┘
                │                                             ▼
                │                                  data/stream/latest.parquet
                ▼                                             │
@@ -95,11 +95,11 @@ All four inputs are downloaded as CSV by `pipeline/download.py` into `data/raw/`
 
 | Component | Technology | Language | Purpose |
 |-----------|-----------|----------|---------|
-| Batch cleaning | Apache Spark 3.5 | **Scala 2.12** | `Clean.scala` — all four raw CSVs → cleaned Parquet |
-| Feature aggregation | Apache Spark 3.5 | **Scala 2.12** | `Features.scala` — per-NTA aggregates + join |
-| Streaming consumer | Spark Structured Streaming | **Scala 2.12** | `Consumer.scala` — Kafka → 5-min windows → Parquet |
-| Geographic join | GeoPandas | Python | `pipeline/geocode.py` — point-in-polygon vs. NTA polygons |
-| Newcomer score | Pandas | Python | `pipeline/score.py` — z-score + weighted sum on 260 NTAs |
+| Batch cleaning | Apache Spark 3.5 | **Scala 2.12** | `etl_code/alexj/Clean.scala` — all four raw CSVs → cleaned Parquet |
+| Feature aggregation | Apache Spark 3.5 | **Scala 2.12** | `etl_code/alexj/Features.scala` — per-NTA aggregates + join |
+| Streaming consumer | Spark Structured Streaming | **Scala 2.12** | `etl_code/alexj/Consumer.scala` — Kafka → 5-min windows → Parquet |
+| Geographic join | GeoPandas | Python | `etl_code/alexj/geocode.py` — point-in-polygon vs. NTA polygons |
+| Newcomer score | Pandas | Python | `etl_code/alexj/score.py` — z-score + weighted sum on 260 NTAs |
 | Streaming producer | kafka-python | Python | `stream/producer.py` — replays 311 records to Kafka |
 | Message broker | Apache Kafka | — | `kafka/docker-compose.yml` — topic `complaints311` |
 | API | FastAPI + uvicorn | Python | `api/main.py` on port 8765 |
@@ -112,13 +112,13 @@ All four inputs are downloaded as CSV by `pipeline/download.py` into `data/raw/`
 
 ## Pipeline Stages
 
-### Stage 1: Data Ingestion (`pipeline/download.py`, `pipeline/geo_download.py`)
+### Stage 1: Data Ingestion (`data_ingest/alexj/download.py`, `data_ingest/alexj/geo_download.py`)
 
 Four raw CSVs and one GeoJSON are fetched over HTTP and written to `data/raw/` and `data/geo/`. 311 is fetched through the Socrata API with a `$where` filter so only the food-safety subset (Food Poisoning, Food Establishment, Rodent, Unsanitary Animal Pvt Property) is pulled server-side. Not a Spark stage — just Python `requests`.
 
-### Stage 2: Batch Cleaning (`Clean.scala`, Scala + Spark)
+### Stage 2: Batch Cleaning (`etl_code/alexj/Clean.scala`, Scala + Spark)
 
-`Clean.scala` is the canonical cleaner for all four datasets. Run with `make clean` (which shells out to `spark-shell -i Clean.scala`) or, on Dataproc, `HDFS_USER=<you> spark-shell --master yarn --deploy-mode client -i Clean.scala`. The script reads from `$DATA_ROOT/raw` locally or `hdfs:///user/$HDFS_USER/data/` on a cluster — same code, same output.
+`Clean.scala` is the canonical cleaner for all four datasets. Run with `make clean` (which shells out to `spark-shell -i etl_code/alexj/Clean.scala`) or, on Dataproc, `HDFS_USER=<you> spark-shell --master yarn --deploy-mode client -i etl_code/alexj/Clean.scala`. The script reads from `$DATA_ROOT/raw` locally or `hdfs:///user/$HDFS_USER/data/` on a cluster — same code, same output.
 
 Per-dataset transformations:
 
@@ -131,15 +131,15 @@ Per-dataset transformations:
 
 **Output:** `data/cleaned/{crime, restaurants, complaints311, rent}/*.parquet`. Schema parity with the earlier PySpark prototype was verified before that implementation was removed; see `CHANGELOG.md`.
 
-`FirstCode.scala` and `CountRecs.scala` are earlier Scala analysis scripts (mean/median/mode, RDD `map`+`reduceByKey`, distinct-value surveys) and are kept in-tree for reference — they're not part of the production pipeline.
+`profiling_code/alexj/FirstCode.scala` and `profiling_code/alexj/CountRecs.scala` are earlier Scala *profiling* scripts — mean/median/mode on the restaurant `SCORE` column and on crime `Latitude`/`Longitude`, RDD `map`+`reduceByKey` per borough, and distinct-value surveys for boroughs/offenses/grades/cuisines. They're kept in the `/profiling_code` tree because they answer the "what's in this data?" questions that *precede* writing ETL, and they're deliberately outside the production pipeline so re-running `make pipeline` doesn't re-run them.
 
-### Stage 3: Geographic Normalization (`pipeline/geocode.py`)
+### Stage 3: Geographic Normalization (`etl_code/alexj/geocode.py`)
 
 `geopandas.sjoin` attaches `nta_code` + `nta_name` to every row of the three point datasets (crime, restaurants, 311) by point-in-polygon against the 2020 NTA GeoJSON. Rent doesn't have coordinates, so a ZIP→NTA lookup is derived by picking, for each ZIP, the NTA containing the most restaurants (written to `data/geo/zip_to_nta.csv`).
 
 Kept in Python deliberately: spatial joins are where `geopandas`/`shapely` are at their best, and adding Sedona to the stack for one operation would be disproportionate. The enriched Parquet written here is the handoff back to Spark, so the Python detour is invisible to downstream stages.
 
-### Stage 4: Feature Aggregation (`Features.scala`, Scala + Spark)
+### Stage 4: Feature Aggregation (`etl_code/alexj/Features.scala`, Scala + Spark)
 
 `Features.scala` reads the four enriched Parquet directories, groups each by `(nta_code, nta_name)`, and produces one row per NTA with:
 
@@ -149,9 +149,9 @@ All four feature tables are outer-joined; population is joined in (from `data/ge
 
 **Output:** `data/scores/neighborhood_features.parquet` (256 NTAs).
 
-### Stage 5: Neighborhood Scoring (`pipeline/score.py`)
+### Stage 5: Neighborhood Scoring (`etl_code/alexj/score.py`)
 
-The cleaned and geocoded data from all four sources is aggregated per NYC Neighborhood Tabulation Area (NTA) in `Features.scala`, producing one row per neighborhood with six numeric features. `pipeline/score.py` then collapses those features into a single **Newcomer Score** on a 0–100 scale.
+The cleaned and geocoded data from all four sources is aggregated per NYC Neighborhood Tabulation Area (NTA) in `Features.scala`, producing one row per neighborhood with six numeric features. `etl_code/alexj/score.py` then collapses those features into a single **Newcomer Score** on a 0–100 scale.
 
 #### Input features (per NTA)
 
@@ -183,7 +183,7 @@ Per-capita rates use population values from `data/geo/nta_population.csv`; if th
    - `cleanliness_score` = `z_complaints_per_1k`
    - `affordability_score` = `z_median_rent_zori`
 
-4. **Weighted sum** using the weights defined at the top of `pipeline/score.py`:
+4. **Weighted sum** using the weights defined at the top of `etl_code/alexj/score.py`:
 
    \[ \text{score} = 0.30 \cdot \text{safety} + 0.25 \cdot \text{food\_safety} + 0.15 \cdot \text{cleanliness} + 0.30 \cdot \text{affordability} \]
 
@@ -229,21 +229,34 @@ Because both paths run the same Python function, the four shared charts are guar
 
 ## Directory Layout
 
+The top level follows the assignment rubric: `/data_ingest`, `/etl_code`, and `/profiling_code` each with a per-member subdirectory. `pipeline/` holds shared infrastructure (filesystem paths, analytics figure builders) that doesn't belong in any one stage. Everything else is serving-layer glue.
+
 ```
 bigdataproject/
-  Clean.scala              # Scala + Spark: canonical batch cleaner (all 4 datasets)
-  Features.scala           # Scala + Spark: per-NTA aggregation + join
-  Consumer.scala           # Scala + Spark Structured Streaming: Kafka consumer
-  FirstCode.scala          # Scala: earlier exploratory analysis (stats, RDD map/reduce)
-  CountRecs.scala          # Scala: earlier exploratory analysis (schemas, distinct values)
+  data_ingest/
+    README.md              # what lives here + run recipes
+    alexj/
+      download.py          # HTTP fetch of 4 raw CSVs -> data/raw/
+      geo_download.py      # HTTP fetch of NTA GeoJSON + population template
 
-  pipeline/
-    download.py            # HTTP download of 4 raw CSVs
-    geo_download.py        # HTTP download of NTA GeoJSON + population template
-    geocode.py             # geopandas point-in-polygon; also ZIP→NTA lookup
-    score.py               # pandas z-score + weighted sum → 0–100 newcomer score
+  etl_code/
+    README.md              # layer map: raw -> cleaned -> enriched -> features -> score
+    alexj/
+      Clean.scala          # Scala + Spark: canonical batch cleaner (all 4 datasets)
+      Features.scala       # Scala + Spark: per-NTA aggregation + join
+      Consumer.scala       # Scala + Structured Streaming: Kafka -> 5-min windows
+      geocode.py           # geopandas point-in-polygon; also ZIP->NTA lookup
+      score.py             # pandas z-score + weighted sum -> 0-100 newcomer score
+
+  profiling_code/
+    README.md              # why profiling lives outside the production pipeline
+    alexj/
+      FirstCode.scala      # mean/median/mode/stddev + RDD map/reduce per borough
+      CountRecs.scala      # schemas + record counts + distinct-value surveys
+
+  pipeline/                # shared infrastructure & serving layer
+    paths.py               # canonical filesystem paths (imported everywhere)
     analytics.py           # Plotly figure builders shared by API + notebook
-    paths.py               # shared filesystem paths
 
   stream/
     producer.py            # Kafka producer (replays 311 onto topic complaints311)
@@ -260,7 +273,7 @@ bigdataproject/
     raw/                   # 4 raw CSVs (ignored by git)
     cleaned/               # Parquet, produced by Clean.scala
     enriched/              # Parquet with nta_code, produced by geocode.py
-    geo/                   # NTA GeoJSON, population, ZIP→NTA lookup
+    geo/                   # NTA GeoJSON, population, ZIP->NTA lookup
     scores/                # neighborhood_features + newcomer_score
     stream/                # windowed history + latest.parquet (from Consumer.scala)
 ```
@@ -275,19 +288,23 @@ bigdataproject/
 
 ```bash
 make setup                     # one-time pip install
-make download                  # fetch 4 raw CSVs
-make geo-download              # fetch NTA GeoJSON + population template
-make pipeline                  # Clean.scala → geocode.py → Features.scala → score.py
+make download                  # data_ingest/alexj/download.py     -> data/raw/
+make geo-download              # data_ingest/alexj/geo_download.py -> data/geo/
+make pipeline                  # Clean.scala -> geocode.py -> Features.scala -> score.py
 # Or run individual stages:
-make clean                     # Scala
-make geocode                   # Python (geopandas)
-make features                  # Scala
-make score                     # Python (pandas)
+make clean                     # etl_code/alexj/Clean.scala        (Scala)
+make geocode                   # etl_code/alexj/geocode.py         (Python, geopandas)
+make features                  # etl_code/alexj/Features.scala     (Scala)
+make score                     # etl_code/alexj/score.py           (Python, pandas)
 
 # Streaming (optional):
 make stream-up                 # docker compose up (Kafka)
-make stream-produce &          # replay 311 to Kafka
-make stream-consume            # Consumer.scala (Scala Structured Streaming)
+make stream-produce &          # stream/producer.py replays 311 onto the topic
+make stream-consume            # etl_code/alexj/Consumer.scala     (Structured Streaming)
+
+# Profiling (exploratory, not part of the production pipeline):
+make profile-first             # profiling_code/alexj/FirstCode.scala
+make profile-counts            # profiling_code/alexj/CountRecs.scala
 
 # Serving:
 make api                       # FastAPI on :8765
@@ -310,8 +327,8 @@ hdfs dfs -mkdir -p /user/$USER/data
 hdfs dfs -put data/raw/*.csv /user/$USER/data/
 
 # 2. Run the Scala jobs against YARN
-HDFS_USER=$USER spark-shell --master yarn --deploy-mode client -i Clean.scala
-HDFS_USER=$USER spark-shell --master yarn --deploy-mode client -i Features.scala
+HDFS_USER=$USER spark-shell --master yarn --deploy-mode client -i etl_code/alexj/Clean.scala
+HDFS_USER=$USER spark-shell --master yarn --deploy-mode client -i etl_code/alexj/Features.scala
 
 # 3. (Optional) Register cleaned Parquet as external Hive tables for SQL access
 ```
@@ -320,8 +337,8 @@ HDFS_USER=$USER spark-shell --master yarn --deploy-mode client -i Features.scala
 
 The core pipeline (4 datasets, Scala+Spark batch, Kafka streaming, FastAPI, Leaflet) is in place. Natural next steps:
 
-- **Alternative Scoring Models:** The Newcomer Score (Stage 5) is a transparent weighted z-score. A learned model (e.g. ranking based on user-stated preferences) or multi-profile scores (student, family, retiree) are a natural extension — weights already live in a single dict in `pipeline/score.py`.
-- **Sedona for spatial joins:** Move `pipeline/geocode.py` to Apache Sedona so the spatial join runs in Spark alongside the rest of the batch — removes the Python hop in the middle of the batch pipeline at the cost of a heavier dependency.
+- **Alternative Scoring Models:** The Newcomer Score (Stage 5) is a transparent weighted z-score. A learned model (e.g. ranking based on user-stated preferences) or multi-profile scores (student, family, retiree) are a natural extension — weights already live in a single dict in `etl_code/alexj/score.py`.
+- **Sedona for spatial joins:** Move `etl_code/alexj/geocode.py` to Apache Sedona so the spatial join runs in Spark alongside the rest of the batch — removes the Python hop in the middle of the batch pipeline at the cost of a heavier dependency.
 - **ZCTA-based ZIP→NTA:** Replace the restaurant-derived ZIP→NTA lookup with a ZCTA shapefile + area-weighted intersection. More accurate, especially for ZIPs with few restaurants.
 - **Additional signals:** Subway access (MTA GTFS), park coverage (NYC Parks GeoJSON), school quality (DOE reports). Each plugs in as: new downloader → new cleaner block in `Clean.scala` → new aggregate in `Features.scala` → optional new weight in `score.py`.
 - **Cluster deploy at scale:** The Scala scripts already target Dataproc via `HDFS_USER`. A genuine stress-test with the full NYPD historical dataset (tens of millions of rows) would exercise the shuffle, AQE, and broadcast-join choices documented in `SCALABILITY.md`.

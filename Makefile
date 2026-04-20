@@ -1,6 +1,7 @@
 .PHONY: setup download geo-download \
         clean geocode features score pipeline \
         stream-up stream-down stream-produce stream-consume \
+        profile-first profile-counts \
         api web all help
 
 PYTHON       ?= python3
@@ -33,56 +34,63 @@ SPARK_OPTS   ?= --master $(SPARK_MASTER) \
                 $(SPARK_TUNE)
 
 help:
-	@echo "Big-data processing (Scala + Spark, canonical):"
-	@echo "  clean          - Clean.scala    : raw CSV -> data/cleaned/*.parquet"
-	@echo "  geocode        - geocode.py     : NTA spatial join (Python, geopandas)"
-	@echo "  features       - Features.scala : per-NTA aggregations -> data/scores/"
-	@echo "  score          - score.py       : 260-row z-score (Python, pandas)"
-	@echo "  pipeline       - clean -> geocode -> features -> score"
+	@echo "Data ingestion  (data_ingest/alexj/):"
+	@echo "  download         - fetch 4 raw CSVs into data/raw/"
+	@echo "  geo-download     - fetch NTA GeoJSON + population template"
 	@echo ""
-	@echo "Streaming (Scala + Spark Structured Streaming):"
-	@echo "  stream-up      - start Kafka via docker-compose"
-	@echo "  stream-down    - stop Kafka"
-	@echo "  stream-produce - producer.py replays 311 records onto Kafka topic"
-	@echo "  stream-consume - Consumer.scala : Kafka -> 5-min windows -> parquet"
+	@echo "ETL / batch       (etl_code/alexj/):"
+	@echo "  clean            - Clean.scala    : raw CSV -> data/cleaned/*.parquet"
+	@echo "  geocode          - geocode.py     : NTA spatial join (geopandas)"
+	@echo "  features         - Features.scala : per-NTA aggregations -> data/scores/"
+	@echo "  score            - score.py       : z-score + weighted sum (pandas)"
+	@echo "  pipeline         - clean -> geocode -> features -> score"
 	@echo ""
-	@echo "Data ingestion (Python, not Spark):"
-	@echo "  download       - fetch raw CSVs into data/raw/"
-	@echo "  geo-download   - fetch NTA GeoJSON + population template"
+	@echo "ETL / streaming   (etl_code/alexj/):"
+	@echo "  stream-up        - start Kafka via docker-compose"
+	@echo "  stream-down      - stop Kafka"
+	@echo "  stream-produce   - producer.py replays 311 records onto Kafka topic"
+	@echo "  stream-consume   - Consumer.scala : Kafka -> 5-min windows -> parquet"
+	@echo ""
+	@echo "Profiling         (profiling_code/alexj/):"
+	@echo "  profile-first    - FirstCode.scala  : schemas + mean/median/mode + RDD map/reduce"
+	@echo "  profile-counts   - CountRecs.scala  : row counts + distinct-value surveys"
 	@echo ""
 	@echo "Serving layer:"
-	@echo "  api            - uvicorn FastAPI on :8765"
-	@echo "  web            - Leaflet static frontend on :5173"
+	@echo "  api              - uvicorn FastAPI on :8765"
+	@echo "  web              - Leaflet static frontend on :5173"
 	@echo ""
-	@echo "  setup          - pip install requirements"
-	@echo "  all            - download + geo-download + pipeline"
+	@echo "Meta:"
+	@echo "  setup            - pip install requirements"
+	@echo "  all              - download + geo-download + pipeline"
 
 setup:
 	$(PIP) install -r requirements.txt
 
+# ---- Data ingestion (code lives in data_ingest/alexj/) --------------------
+
 download:
-	$(PYTHON) -m pipeline.download
+	$(PYTHON) -m data_ingest.alexj.download
 
 geo-download:
-	$(PYTHON) -m pipeline.geo_download
+	$(PYTHON) -m data_ingest.alexj.geo_download
 
-# ---- Batch pipeline -------------------------------------------------------
+# ---- Batch pipeline (code lives in etl_code/alexj/) -----------------------
 
 clean:
-	DATA_ROOT=$(DATA_ROOT) $(SPARK_SHELL) $(SPARK_OPTS) -i Clean.scala
+	DATA_ROOT=$(DATA_ROOT) $(SPARK_SHELL) $(SPARK_OPTS) -i etl_code/alexj/Clean.scala
 
 geocode: geo-download
-	$(PYTHON) -m pipeline.geocode
+	$(PYTHON) -m etl_code.alexj.geocode
 
 features:
-	DATA_ROOT=$(DATA_ROOT) $(SPARK_SHELL) $(SPARK_OPTS) -i Features.scala
+	DATA_ROOT=$(DATA_ROOT) $(SPARK_SHELL) $(SPARK_OPTS) -i etl_code/alexj/Features.scala
 
 score:
-	$(PYTHON) -m pipeline.score
+	$(PYTHON) -m etl_code.alexj.score
 
 pipeline: clean geocode features score
 
-# ---- Streaming ------------------------------------------------------------
+# ---- Streaming (consumer is ETL; producer is glue) ------------------------
 
 stream-up:
 	docker compose -f kafka/docker-compose.yml up -d
@@ -94,7 +102,19 @@ stream-produce:
 	$(PYTHON) -m stream.producer
 
 stream-consume:
-	DATA_ROOT=$(DATA_ROOT) $(SPARK_SHELL) $(SPARK_OPTS) --packages $(KAFKA_PKG) -i Consumer.scala
+	DATA_ROOT=$(DATA_ROOT) $(SPARK_SHELL) $(SPARK_OPTS) --packages $(KAFKA_PKG) -i etl_code/alexj/Consumer.scala
+
+# ---- Profiling (code lives in profiling_code/alexj/) ----------------------
+# FirstCode.scala and CountRecs.scala are exploratory surveying scripts
+# (record counts, distinct values, mean/median/mode). They aren't part of
+# the production pipeline — run them ad-hoc when you want to re-profile a
+# dataset after a schema change.
+
+profile-first:
+	DATA_ROOT=$(DATA_ROOT) $(SPARK_SHELL) $(SPARK_OPTS) -i profiling_code/alexj/FirstCode.scala
+
+profile-counts:
+	DATA_ROOT=$(DATA_ROOT) $(SPARK_SHELL) $(SPARK_OPTS) -i profiling_code/alexj/CountRecs.scala
 
 # ---- Serving --------------------------------------------------------------
 

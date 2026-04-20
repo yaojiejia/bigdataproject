@@ -7,7 +7,7 @@ figure spec, same Plotly rendering engine.
 
 Each `*_fig` function returns a `plotly.graph_objects.Figure` built
 on top of `NEWCOMER_SCORE` (the per-NTA parquet emitted by
-`pipeline/score.py`). The API serialises the figure with
+`etl_code/alexj/score.py`). The API serialises the figure with
 `fig.to_json()`; the notebook calls `fig.show()` directly.
 """
 from __future__ import annotations
