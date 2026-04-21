@@ -18,11 +18,11 @@ be horizontally scalable if the dataset grew.
 ## 1. Spark configuration (`SPARK_TUNE` in the Makefile)
 
 Every Scala Spark job — `Clean.scala`, `Geocode.scala`, `Features.scala`,
-`Score.scala`, `Analytics.scala`, `Consumer.scala`, `stream/Producer.scala`
-— is launched with the same tuning flags, defined once in the Makefile
-as `SPARK_TUNE` and passed to `spark-shell --conf` on every invocation.
-This way the configs live in exactly one place, apply to every batch and
-streaming job, and are visible in `make help`.
+`Score.scala`, `Analytics.scala` — is launched with the same tuning
+flags, defined once in the Makefile as `SPARK_TUNE` and passed to
+`spark-shell --conf` on every invocation. This way the configs live in
+exactly one place, apply to every batch job, and are visible in
+`make help`.
 
 Every non-default config is there for a reason. Defaults that don't fit
 this workload were changed; defaults that do were left alone.
@@ -72,9 +72,9 @@ deliberate: the static frontend fetches these files by exact URL, so a
 directory of part-files would need a manifest. At ~260 rows per table the
 single-reducer bottleneck is irrelevant.
 
-`Clean.scala`, `Geocode.scala`, `Features.scala`, and the streaming
-consumer's history sink do *not* coalesce — those outputs are read
-downstream by Spark, which handles part-file directories natively.
+`Clean.scala`, `Geocode.scala`, and `Features.scala` do *not* coalesce
+— those outputs are read downstream by Spark, which handles part-file
+directories natively.
 
 ### What we did **not** configure
 
@@ -84,10 +84,9 @@ downstream by Spark, which handles part-file directories natively.
   `Analytics.scala` is the one exception — it computes nine output tables
   from the same features + score DataFrame and explicitly `.cache()`s the
   joined input so the scan happens once.
-- Checkpointing (batch) — the pipeline is short enough that restart-from-
-  scratch is fine. Streaming checkpointing is enabled
-  (`STREAM_LOGS / *-ck`) because Structured Streaming needs it for
-  exactly-once.
+- Checkpointing — the pipeline is short enough that restart-from-
+  scratch is fine; each stage reads its Parquet input and writes new
+  Parquet, so any failure is recovered by re-running `make <stage>`.
 - Off-heap memory, G1GC tuning — none of that helps at this data size;
   it would be cargo-culting.
 
@@ -142,22 +141,6 @@ tables (~260 rows each, most much smaller) via Spark SQL:
 
 `.cache()` on the joined input DataFrame avoids re-reading parquet for
 each of the nine outputs.
-
-### Streaming layer: two sinks, two processing-time triggers
-
-`etl_code/alexj/Consumer.scala` writes two sinks from the same windowed aggregation:
-
-1. **`data/stream/windowed/`** — append-mode Parquet, 30-second micro-batches.
-   This is the tamper-proof audit log; parallelism matters here so we
-   don't `coalesce(1)`.
-2. **`data/stream/latest.parquet`** — overwritten every 15 seconds via
-   `foreachBatch` with `.coalesce(1)`. The frontend fetches this file
-   directly via `hyparquet`. `coalesce(1)` is correct here because the
-   aggregated snapshot is ~260 rows — one file is cheaper for the
-   downstream reader than hunting part-files, and hyparquet can only
-   load a single URL.
-
-The split keeps query latency low while preserving history.
 
 ## 3. Scaling behaviour (reference)
 
@@ -229,11 +212,10 @@ against a live cluster. Required environment:
 | `DATAPROC_REGION` | GCP region (e.g. `us-central1`) |
 | `GCS_SCRIPT_ROOT` | bucket path for uploading Scala scripts |
 | `GCS_DATA_ROOT` | bucket path used as `$DATA_ROOT` on the executors |
-| `KAFKA_BOOTSTRAP` | managed Kafka brokers (streaming stages only) |
 
 The submit script forwards `--packages` for JTS (`Geocode.scala`) and
-`spark-sql-kafka-0-10` (streaming stages), and sets `spark.driver.memory`
-and `spark.executor.memory` based on the instance type of the cluster.
+sets `spark.driver.memory` and `spark.executor.memory` based on the
+instance type of the cluster.
 
 ### Config differences between local and cluster
 
@@ -243,7 +225,6 @@ and `spark.executor.memory` based on the instance type of the cluster.
 | `spark.sql.shuffle.partitions` | 8 | `2 × total cores` in the cluster |
 | `$DATA_ROOT` | `./data` | `gs://<bucket>/data` |
 | Geocoding polygons source | local GeoJSON | GCS GeoJSON (same `Hadoop FileSystem` API) |
-| Streaming broker | Kafka in Docker | managed Kafka / Pub/Sub bridge |
 | Output for static frontend | local filesystem | GCS with public-read IAM |
 
 All Scala scripts resolve paths using a single helper that falls back

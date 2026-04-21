@@ -65,16 +65,6 @@ All four inputs are downloaded as CSV by `data_ingest/alexj/download.py` into `d
                       │  etl_code/alexj/Analytics.scala       (Scala + Spark)
                       ▼
                data/analytics/*.parquet   (9 pre-aggregated tables)
-
-    ┌──────── streaming (Scala/Spark only) ────────┐
-    │ stream/Producer.scala  ──► Kafka (Docker)    │
-    │                              │                │
-    │                              ▼                │
-    │           etl_code/alexj/Consumer.scala       │
-    │                              │                │
-    │                              ▼                │
-    │           data/stream/latest.parquet          │
-    └───────────────────────────────────────────────┘
 └──────────────────────────────────────────────────────────────────────────────────────┘
                                  │
                                  │  gsutil rsync  (or host web/ + data/ on GCS directly)
@@ -96,10 +86,7 @@ All four inputs are downloaded as CSV by `data_ingest/alexj/download.py` into `d
 | Feature aggregation | Apache Spark 3.5 | **Scala 2.12** | `etl_code/alexj/Features.scala` — per-NTA aggregates + join |
 | Newcomer score | Apache Spark 3.5 | **Scala 2.12** | `etl_code/alexj/Score.scala` — z-score + weighted sum on 260 NTAs |
 | Analytics aggregates | Apache Spark 3.5 | **Scala 2.12** | `etl_code/alexj/Analytics.scala` — writes 9 small parquet tables |
-| Streaming consumer | Spark Structured Streaming | **Scala 2.12** | `etl_code/alexj/Consumer.scala` — Kafka → 5-min windows → Parquet |
-| Streaming producer | Kafka Clients + Spark | **Scala 2.12** | `stream/Producer.scala` — replays enriched 311 onto Kafka |
 | HTTP data download | `requests` | Python | `data_ingest/alexj/download.py`, `geo_download.py` — ingest only |
-| Message broker | Apache Kafka | — | `kafka/docker-compose.yml` — topic `complaints311` |
 | Parquet reader (browser) | [hyparquet](https://github.com/hyparam/hyparquet) | JavaScript | `web/lib/parquet.js` — single-file parquet over HTTP |
 | Frontend map | Leaflet + plain JS | JavaScript | `web/index.html` — choropleth, click-through detail |
 | Frontend dashboard | Plotly.js | JavaScript | `web/dashboard.html` — 5 analytical charts |
@@ -206,16 +193,7 @@ The dashboard needs nine specific things: a summary strip, a per-metric histogra
 
 `Analytics.scala` uses `percentile_approx` for all quantile computations, a single `groupBy().agg()` pass per metric for the summary stats, `ntile(10)` windowing for the rent-vs decile bins, and Spark's `corr()` aggregate for each of the 36 heatmap cells. OLS slope / intercept are derived analytically from `corr`, `avg`, `stddev_pop` — no Spark ML dependency needed at this scale.
 
-### Stage 7: Streaming (`stream/Producer.scala` + `etl_code/alexj/Consumer.scala`)
-
-Both sides are Scala.
-
-- **Producer.** Reads enriched 311 via Spark (so each record already carries its nta_code), collects to the driver (records are small — ~320k), and publishes to the `complaints311` Kafka topic via `org.apache.kafka.clients.producer.KafkaProducer`. A fresh `created_date` is stitched into each JSON payload so the consumer's 10-minute watermark doesn't drop them. Rate is configurable via `STREAM_RPS`.
-- **Consumer.** Spark Structured Streaming reads from Kafka, parses the JSON, watermarks at 10 minutes, and groups into 5-minute tumbling windows keyed by `(nta_code, nta_name, complaint_type)`. Two sinks: an append-mode history at `data/stream/windowed/`, and a `foreachBatch` snapshot at `data/stream/latest.parquet` (atomic-rename so the frontend never sees a half-written directory).
-
-The consumer's `ensureTopic()` uses `org.apache.kafka.clients.admin.AdminClient` (shipped with the `spark-sql-kafka-0-10` package) to create the topic idempotently before the query starts, avoiding the "UnknownTopicOrPartitionException" race an earlier version hit.
-
-### Stage 8: Frontend (`web/`)
+### Stage 7: Frontend (`web/`)
 
 No backend, no Python at serve time. `web/lib/parquet.js` wraps `hyparquet` with a `loadParquet(url)` helper. `web/lib/figures.js` builds Plotly figure specs from the analytics parquet tables (a direct port of the old Python figure builders so the visuals stay identical). `web/dashboard.js` orchestrates the dashboard; `web/map.js` joins the score parquet onto the NTA GeoJSON client-side and hands it to Leaflet.
 
@@ -242,16 +220,12 @@ bigdataproject/
       Features.scala       # Spark batch: per-NTA agg     -> neighborhood_features.parquet
       Score.scala          # Spark batch: z-score + sum   -> newcomer_score.parquet
       Analytics.scala      # Spark batch: dashboard aggs  -> data/analytics/*.parquet
-      Consumer.scala       # Structured Streaming: Kafka  -> data/stream/
 
   profiling_code/
     README.md
     alexj/
       FirstCode.scala      # mean/median/mode/stddev + RDD map/reduce per borough
       CountRecs.scala      # schemas + record counts + distinct-value surveys
-
-  stream/
-    Producer.scala         # Scala Kafka producer (replays 311 onto topic complaints311)
 
   web/                     # Static frontend — no backend, no Python
     index.html  map.js     # Leaflet choropleth
@@ -261,7 +235,6 @@ bigdataproject/
     style.css  dashboard.css
 
   ops/submit_dataproc.sh   # wraps `gcloud dataproc jobs submit spark` per stage
-  kafka/docker-compose.yml # single-broker Kafka + Zookeeper for local dev
   Makefile                 # one target per stage; see `make help`
 
   data/
@@ -271,7 +244,6 @@ bigdataproject/
     geo/                   # NTA GeoJSON, population, ZIP->NTA lookup
     scores/                # neighborhood_features + newcomer_score
     analytics/             # 9 pre-aggregated dashboard parquet tables
-    stream/                # windowed history + latest.parquet
 ```
 
 ## How to Run
@@ -281,10 +253,9 @@ bigdataproject/
 - Python 3.11+ (only for `requests`-based downloaders)
 - Java 11
 - Apache Spark 3.5 with `spark-shell` on `PATH`
-- Docker (only for the Kafka streaming layer)
 - GCP SDK (`gcloud`) — only if submitting to Dataproc
 
-`make setup` installs the single Python dependency (`requests`). Spark is a separate install; `pyspark` is intentionally absent because every Spark job in this repo is Scala, invoked via `spark-shell -i`. First run of `make geocode` or `make stream-consume` will ivy-resolve the JTS / spark-sql-kafka packages on demand.
+`make setup` installs the single Python dependency (`requests`). Spark is a separate install; `pyspark` is intentionally absent because every Spark job in this repo is Scala, invoked via `spark-shell -i`. The first run of `make geocode` will ivy-resolve the JTS package on demand (~5 MB jar, cached in `~/.ivy2`).
 
 ### Local (single machine)
 
@@ -300,11 +271,6 @@ make geocode                   # etl_code/alexj/Geocode.scala   (with --packages
 make features                  # etl_code/alexj/Features.scala
 make score                     # etl_code/alexj/Score.scala
 make analytics                 # etl_code/alexj/Analytics.scala
-
-# Streaming (optional, 3 terminals):
-make stream-up                 # docker compose up (Kafka)
-make stream-consume            # etl_code/alexj/Consumer.scala   (Spark Structured Streaming)
-make stream-produce            # stream/Producer.scala
 
 # Profiling (exploratory, not part of the production pipeline):
 make profile-first             # profiling_code/alexj/FirstCode.scala

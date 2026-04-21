@@ -9,6 +9,48 @@ sites where these changes happened, with the previous (broken or weaker)
 version preserved as commented-out code. Searching the repo for that
 string surfaces every fix.
 
+## Architecture: Kafka / streaming layer removed
+
+**Before:** The pipeline shipped a streaming arm alongside the batch
+pipeline: `stream/Producer.scala` replayed enriched 311 rows onto a
+Kafka topic (`complaints311`), and `etl_code/alexj/Consumer.scala` ran a
+Spark Structured Streaming query that aggregated 5-minute tumbling
+windows per NTA and wrote them to `data/stream/latest.parquet` for the
+frontend to poll. Kafka ran in a single-broker Docker Compose stack
+under `kafka/docker-compose.yml`, and the Makefile had
+`stream-up / stream-down / stream-produce / stream-consume` targets.
+
+**Change:** Removed the streaming layer end-to-end. The batch pipeline
+— `Clean → Geocode → Features → Score → Analytics` — is now the whole
+story. Deleted files:
+
+- `etl_code/alexj/Consumer.scala`
+- `stream/Producer.scala` (and the empty `stream/` directory)
+- `kafka/docker-compose.yml` (and the empty `kafka/` directory)
+- the `data/stream/` output tree
+- the `stream-*` Makefile targets, the `KAFKA_BOOTSTRAP` env var in
+  `ops/submit_dataproc.sh`, and the `spark-sql-kafka-0-10` package in
+  the Dataproc wrapper
+
+**Rationale:** The streaming path was always a *simulation* over a
+static CSV — NYC Open Data doesn't expose 311 as a push feed — so it
+existed to demonstrate the architecture rather than to deliver a
+real-time signal. Maintaining it had real costs: a Docker dependency
+in the local dev loop, `spark-sql-kafka` on the `--packages` line on
+every cluster submission, a second codepath for aggregations that
+already live in `Features.scala`, and an extra parquet path the
+frontend had to know about. Scoping the project to batch-only keeps
+the big-data surface uniform (one language, one trigger model, one
+output layout) and makes the repo smaller and easier to follow.
+
+**Docs:** `PROJECT.md`, `architect.md`, `SCALABILITY.md`, and the
+`etl_code/` / `etl_code/alexj/` READMEs were all rewritten to drop the
+streaming layer from the diagrams, component tables, Makefile
+reference, and prerequisites. Historical streaming-specific entries
+below (e.g. *Consumer.scala — pre-create the Kafka topic*) are kept
+for the audit trail: they describe real fixes to code that existed at
+the time and have since been deleted.
+
 ## Architecture: Scala-only big-data pipeline on Dataproc
 
 **Before:** Big-data processing was split between Scala Spark (clean,
@@ -36,9 +78,9 @@ on GCP Dataproc:
   rent_vs_feature_{bins,ols,points}) under `data/analytics/`. The
   frontend reads them directly.
 - `stream/Producer.scala` replaces `stream/producer.py` — uses
-  `org.apache.kafka.clients.producer.KafkaProducer` directly; reads
-  enriched 311 parquet via Spark, collects to the driver, and paces
-  sends at a configurable rate.
+  `org.apache.kafka.clients.producer.KafkaProducer` directly. *(This
+  file and the rest of the streaming layer were later removed — see
+  "Kafka / streaming layer removed" at the top of this changelog.)*
 
 Python survives only in `data_ingest/alexj/` (HTTP downloads via
 `requests` + a tiny self-contained `paths.py`). The FastAPI backend,
@@ -56,10 +98,9 @@ website-hosting bucket.
 
 **Dataproc:** `ops/submit_dataproc.sh <stage>` uploads the Scala script
 to GCS, then runs `gcloud dataproc jobs submit spark` with the right
-`--packages` (JTS for geocode, `spark-sql-kafka-0-10` for streaming) and
-`$DATA_ROOT` pointed at a GCS bucket. All nine stages (clean, geocode,
-features, score, analytics, stream-produce, stream-consume, and the two
-profiling scripts) run unmodified.
+`--packages` (JTS for geocode) and `$DATA_ROOT` pointed at a GCS bucket.
+Every stage (clean, geocode, features, score, analytics, and the two
+profiling scripts) runs unmodified.
 
 **Docs:** `README.md`, `PROJECT.md`, `architect.md`, and `SCALABILITY.md`
 rewritten to reflect the Scala-only, no-backend, Dataproc-native
@@ -164,7 +205,13 @@ reading the file.
 bite silently. A cleaner long-term fix is to have `geocode.py` cast its
 string-typed date columns to `datetime64[ms]` before writing.
 
-## Streaming
+## Streaming (historical — feature since removed)
+
+The entries below document fixes made to the Kafka streaming layer
+while it existed. The layer was removed in its entirety — see
+"Kafka / streaming layer removed" at the top of this changelog — and
+these entries are kept only as an audit trail of decisions made at
+the time.
 
 ### Consumer.scala — pre-create the Kafka topic
 

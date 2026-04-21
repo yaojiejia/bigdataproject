@@ -17,4 +17,7 @@ HTTP downloaders for the four raw datasets and the NTA GeoJSON.
 
 ## Imports
 
-Both modules import `pipeline.paths` for canonical filesystem locations so the paths stay consistent with the rest of the pipeline.
+Both modules import `data_ingest.alexj.paths` for canonical filesystem
+locations. `paths.py` is fully self-contained — no cross-package
+imports — so the downloader can run without the Scala / Spark side of
+the repo being installed.
