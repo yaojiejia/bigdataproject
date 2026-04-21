@@ -26,11 +26,13 @@
       <section class="dash-intro">
         <h1>Neighborhood Analytics</h1>
         <p class="sub">
-          Every chart below is rendered from the same <code>pipeline/analytics.py</code>
-          module that powers <code>notebooks/analysis.ipynb</code>, so the two
-          sources show byte-identical figures. Switch the metric to recompute
-          the first three charts; the correlation matrix is fixed because it
-          describes the six inputs that feed into the Newcomer Score.
+          Every chart below is rendered in your browser directly from the
+          parquet tables that <code>etl_code/alexj/Analytics.scala</code>
+          writes under <code>data/analytics/</code>. No backend server, no
+          Python at runtime — just Scala/Spark on the compute side and
+          Plotly.js on the display side. Switch the metric to recompute
+          the first three charts; the correlation matrix is fixed because
+          it describes the six inputs that feed into the Newcomer Score.
         </p>
       </section>
 
@@ -128,6 +130,6 @@
     </main>
 
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
-    <script src="dashboard.js?v=2"></script>
+    <script type="module" src="dashboard.js?v=3"></script>
   </body>
 </html>

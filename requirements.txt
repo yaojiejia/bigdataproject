@@ -1,11 +1,6 @@
-pandas>=2.0
-geopandas>=0.14
-shapely>=2.0
-pyarrow>=14.0
+# Python is ONLY used for HTTP data ingestion (data_ingest/alexj/*.py).
+# Every big-data step — ETL, geocoding, scoring, analytics, Kafka
+# producing/consuming — runs on Scala/Spark and has no Python footprint.
+# The web dashboard is a static bundle that reads parquet directly with
+# hyparquet in the browser, so no backend server / no Python at serve time.
 requests>=2.31
-fastapi>=0.110
-uvicorn>=0.27
-kafka-python>=2.0.2
-numpy>=1.26
-plotly>=5.18
-jupyter>=1.0

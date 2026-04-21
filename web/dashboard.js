@@ -1,20 +1,38 @@
-// Analytics dashboard. Fetches figure specs from `/analytics/*` and
-// renders them with Plotly.js. The same figure builder runs in
-// `notebooks/analysis.ipynb`, so the charts match exactly.
+// ============================================================
+// web/dashboard.js — analytics dashboard, no backend.
+// ============================================================
+//
+// Loads every aggregate parquet file written by
+// `etl_code/alexj/Analytics.scala` once at startup, then re-builds the
+// Plotly specs in-browser whenever the user switches metric or rent
+// predictor. No API calls, no server — just parquet + Plotly.
+// ============================================================
 
-const API_BASE =
-  window.location.port === "8765" ? "" : `http://${window.location.hostname}:8765`;
+import { loadParquet } from "./lib/parquet.js";
+import {
+  METRICS, RENT_PREDICTOR_META, INPUT_FEATURE_LABELS,
+  distributionFigure, topBottomFigure, byBoroughFigure,
+  correlationFigure, rentVsFeatureFigure,
+} from "./lib/figures.js";
 
-const METRICS = [
-  { key: "score", label: "Newcomer Score", fmt: (v) => v.toFixed(1), unit: "/ 100" },
-  { key: "crime", label: "Crimes / 1k", fmt: (v) => v.toFixed(1), unit: "per 1k" },
-  { key: "food",  label: "Critical rate", fmt: (v) => (v * 100).toFixed(1) + "%", unit: "" },
-  { key: "rent",  label: "Median rent",   fmt: (v) => "$" + Math.round(v).toLocaleString(), unit: "/ mo" },
-  { key: "311",   label: "311 / 1k",      fmt: (v) => v.toFixed(1), unit: "per 1k" },
+const DATA = "../data/analytics";
+
+const PARQUETS = {
+  summary:       `${DATA}/summary.parquet`,
+  distribution:  `${DATA}/distribution.parquet`,
+  topBottom:     `${DATA}/top_bottom.parquet`,
+  boroughBox:    `${DATA}/borough_box.parquet`,
+  boroughPoints: `${DATA}/borough_points.parquet`,
+  correlation:   `${DATA}/correlation.parquet`,
+  rentBins:      `${DATA}/rent_vs_feature_bins.parquet`,
+  rentOls:       `${DATA}/rent_vs_feature_ols.parquet`,
+  rentPoints:    `${DATA}/rent_vs_feature_points.parquet`,
+};
+
+const INPUT_FEATURES_ORDER = [
+  "crimes_per_1k", "felony_share", "avg_score",
+  "critical_rate", "complaints_per_1k", "median_rent_zori",
 ];
-
-let currentMetric = "score";
-let currentPredictor = "crimes_per_1k";
 
 const PLOTLY_CONFIG = {
   displaylogo: false,
@@ -26,17 +44,17 @@ const PLOTLY_CONFIG = {
   toImageButtonOptions: { format: "png", filename: "nyc-insights-chart", scale: 2 },
 };
 
+const STATE = {
+  metric:    "score",
+  predictor: "crimes_per_1k",
+  tables:    {},
+};
+
 function setStatus(msg, state = "ok") {
   const dot = document.getElementById("status-dot");
   const txt = document.getElementById("status");
   if (txt) txt.textContent = msg;
   if (dot) dot.className = "status-dot" + (state === "ok" ? "" : " " + state);
-}
-
-async function fetchFigure(path) {
-  const r = await fetch(`${API_BASE}${path}`);
-  if (!r.ok) throw new Error(`${path} → HTTP ${r.status}`);
-  return r.json();
 }
 
 function renderError(divId, err) {
@@ -45,98 +63,116 @@ function renderError(divId, err) {
   el.innerHTML = `<div class="chart-error">⚠ ${err.message || err}</div>`;
 }
 
-async function renderFigure(divId, path) {
+async function draw(divId, fig) {
   try {
-    const fig = await fetchFigure(path);
     await Plotly.react(divId, fig.data, fig.layout, PLOTLY_CONFIG);
   } catch (err) {
-    console.error(path, err);
+    console.error(divId, err);
     renderError(divId, err);
   }
 }
 
-async function renderSummary() {
-  try {
-    const r = await fetch(`${API_BASE}/analytics/summary`);
-    if (!r.ok) throw new Error(`summary → HTTP ${r.status}`);
-    const summary = await r.json();
-    const strip = document.getElementById("summary-strip");
-    const cards = [
-      {
-        label: "Neighborhoods",
-        value: (summary.n_ntas ?? 0).toLocaleString(),
-        sub: `across ${summary.n_boroughs ?? 0} boroughs`,
-      },
-    ];
-    for (const m of METRICS) {
-      const stats = summary[m.key];
-      if (!stats) continue;
-      cards.push({
-        label: m.label,
-        value: m.fmt(stats.median) + (m.unit ? ` ${m.unit}` : ""),
-        sub: `range ${m.fmt(stats.min)} – ${m.fmt(stats.max)}`,
-      });
-    }
-    strip.innerHTML = cards
-      .map(
-        (c) => `
-      <div class="summary-card">
-        <span class="label">${c.label}</span>
-        <span class="value">${c.value}</span>
-        <span class="sub">${c.sub}</span>
-      </div>`,
-      )
-      .join("");
-  } catch (err) {
-    console.error("summary", err);
+// ---- Header strip ---------------------------------------------------------
+
+function renderSummaryStrip() {
+  const summary = STATE.tables.summary;
+  const strip   = document.getElementById("summary-strip");
+  const rows    = summary.rows;
+  const nNtas   = Number(rows[0]?.n_ntas || 0);
+  const cards   = [{
+    label: "Neighborhoods",
+    value: nNtas.toLocaleString(),
+    sub:   "across 5 boroughs",
+  }];
+  for (const key of Object.keys(METRICS)) {
+    const meta = METRICS[key];
+    const row  = rows.find((r) => r.metric === key);
+    if (!row) continue;
+    cards.push({
+      label: meta.label,
+      value: meta.fmt(row.median) + (meta.unit ? ` ${meta.unit}` : ""),
+      sub:   `range ${meta.fmt(row.min)} – ${meta.fmt(row.max)}`,
+    });
   }
+  strip.innerHTML = cards.map((c) => `
+    <div class="summary-card">
+      <span class="label">${c.label}</span>
+      <span class="value">${c.value}</span>
+      <span class="sub">${c.sub}</span>
+    </div>
+  `).join("");
 }
 
-async function renderAll(metric) {
-  setStatus(`Rendering charts for ${metric}…`, "loading");
-  const qs = `?metric=${encodeURIComponent(metric)}`;
-  await Promise.all([
-    renderFigure("fig-distribution", `/analytics/distribution${qs}`),
-    renderFigure("fig-top-bottom",   `/analytics/top-bottom${qs}&n=10`),
-    renderFigure("fig-by-borough",   `/analytics/by-borough${qs}`),
-  ]);
-  setStatus("All charts in sync with the notebook.", "ok");
+// ---- Per-metric redraws ---------------------------------------------------
+
+function renderMetricFigures(metric) {
+  const T = STATE.tables;
+  draw("fig-distribution", distributionFigure(T.distribution.rows, T.summary.rows, metric));
+  draw("fig-top-bottom",   topBottomFigure(T.topBottom.rows, metric, 10));
+  draw("fig-by-borough",   byBoroughFigure(T.boroughBox.rows, T.boroughPoints.rows, metric));
 }
 
-async function renderStatic() {
-  await renderFigure("fig-correlation", "/analytics/correlation");
+function renderCorrelation() {
+  const T = STATE.tables;
+  draw("fig-correlation", correlationFigure(T.correlation.rows, INPUT_FEATURES_ORDER));
 }
 
-async function renderRentVs(feature) {
-  const qs = `?feature=${encodeURIComponent(feature)}`;
-  await renderFigure("fig-rent-vs", `/analytics/rent-vs${qs}`);
+function renderRentVs(feature) {
+  const T = STATE.tables;
+  draw("fig-rent-vs", rentVsFeatureFigure(T.rentBins.rows, T.rentOls.rows, T.rentPoints.rows, feature));
 }
+
+// ---- Wire up pills --------------------------------------------------------
 
 document.getElementById("metric-pills").addEventListener("click", (ev) => {
   const btn = ev.target.closest("button[data-metric]");
   if (!btn) return;
-  document
-    .querySelectorAll("#metric-pills button")
+  document.querySelectorAll("#metric-pills button")
     .forEach((b) => b.classList.toggle("active", b === btn));
-  currentMetric = btn.dataset.metric;
-  renderAll(currentMetric);
+  STATE.metric = btn.dataset.metric;
+  renderMetricFigures(STATE.metric);
 });
 
 document.getElementById("predictor-pills").addEventListener("click", (ev) => {
   const btn = ev.target.closest("button[data-feature]");
   if (!btn) return;
-  document
-    .querySelectorAll("#predictor-pills button")
+  document.querySelectorAll("#predictor-pills button")
     .forEach((b) => b.classList.toggle("active", b === btn));
-  currentPredictor = btn.dataset.feature;
-  renderRentVs(currentPredictor);
+  STATE.predictor = btn.dataset.feature;
+  renderRentVs(STATE.predictor);
 });
 
+// ---- Boot -----------------------------------------------------------------
+
 (async function init() {
-  await renderSummary();
-  await Promise.all([
-    renderAll(currentMetric),
-    renderStatic(),
-    renderRentVs(currentPredictor),
-  ]);
+  setStatus("Loading analytics parquet…", "loading");
+  try {
+    const [summary, distribution, topBottom, boroughBox, boroughPoints,
+           correlation, rentBins, rentOls, rentPoints] = await Promise.all([
+      loadParquet(PARQUETS.summary),
+      loadParquet(PARQUETS.distribution),
+      loadParquet(PARQUETS.topBottom),
+      loadParquet(PARQUETS.boroughBox),
+      loadParquet(PARQUETS.boroughPoints),
+      loadParquet(PARQUETS.correlation),
+      loadParquet(PARQUETS.rentBins),
+      loadParquet(PARQUETS.rentOls),
+      loadParquet(PARQUETS.rentPoints),
+    ]);
+    STATE.tables = {
+      summary, distribution, topBottom, boroughBox, boroughPoints,
+      correlation, rentBins, rentOls, rentPoints,
+    };
+    renderSummaryStrip();
+    renderMetricFigures(STATE.metric);
+    renderCorrelation();
+    renderRentVs(STATE.predictor);
+    setStatus("Dashboard rendered from Scala/Spark parquet.", "ok");
+  } catch (err) {
+    console.error(err);
+    setStatus(
+      "Couldn't load analytics parquet. Did you run `make analytics`?",
+      "error"
+    );
+  }
 })();

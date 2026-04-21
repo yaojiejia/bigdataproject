@@ -15,7 +15,7 @@ from pathlib import Path
 
 import requests
 
-from pipeline.paths import (
+from data_ingest.alexj.paths import (
     RAW_COMPLAINTS311,
     RAW_CRIME,
     RAW_RENT,

@@ -9,6 +9,70 @@ sites where these changes happened, with the previous (broken or weaker)
 version preserved as commented-out code. Searching the repo for that
 string surfaces every fix.
 
+## Architecture: Scala-only big-data pipeline on Dataproc
+
+**Before:** Big-data processing was split between Scala Spark (clean,
+features, streaming consumer) and Python (geocoding via geopandas,
+scoring via pandas, analytics via pandas + Plotly Python, Kafka producer
+via `kafka-python`). A FastAPI backend served pre-computed figures as
+Plotly JSON and the GeoJSON map layer. Jupyter notebooks mirrored the
+dashboard via the shared `pipeline.analytics` module.
+
+**Change:** Collapsed to a single-language big-data surface. Every stage
+that touches data is now Scala + Spark, and every stage runs unmodified
+on GCP Dataproc:
+
+- `etl_code/alexj/Geocode.scala` replaces `geocode.py` — JTS point-in-
+  polygon via a broadcast of 260 parsed NTA polygons + a Spark UDF.
+  ZIP→NTA lookup derived via `groupBy` + window function on the enriched
+  restaurants dataset. Parses GeoJSON with Jackson (already on the Spark
+  classpath) so no extra deps beyond the JTS jar.
+- `etl_code/alexj/Score.scala` replaces `score.py` — z-score + weighted
+  sum + min-max rescale in Spark SQL. Population std deviation
+  (`stddev_pop`) used to match the pandas reference byte-for-byte.
+- `etl_code/alexj/Analytics.scala` replaces `pipeline/analytics.py` —
+  writes 9 pre-aggregated parquet tables (summary, distribution,
+  top_bottom, borough_box, borough_points, correlation,
+  rent_vs_feature_{bins,ols,points}) under `data/analytics/`. The
+  frontend reads them directly.
+- `stream/Producer.scala` replaces `stream/producer.py` — uses
+  `org.apache.kafka.clients.producer.KafkaProducer` directly; reads
+  enriched 311 parquet via Spark, collects to the driver, and paces
+  sends at a configurable rate.
+
+Python survives only in `data_ingest/alexj/` (HTTP downloads via
+`requests` + a tiny self-contained `paths.py`). The FastAPI backend,
+`pipeline/` package, `notebooks/` tree, and `__init__.py` shims are all
+deleted. `requirements.txt` is trimmed to a single line: `requests`.
+
+**Serving:** No backend. `web/` is a pure static bundle.
+`web/lib/parquet.js` wraps [hyparquet](https://github.com/hyparam/hyparquet)
+to fetch parquet over HTTP; `web/lib/figures.js` builds Plotly figure
+specs from the parquet aggregates (mirroring the old Python builders);
+`web/map.js` and `web/dashboard.js` compose these into the two pages.
+`make web` serves `$(PWD)` via `python -m http.server :5173` as a
+zero-dep dev aid; production publishes `web/` + `data/` to a GCS
+website-hosting bucket.
+
+**Dataproc:** `ops/submit_dataproc.sh <stage>` uploads the Scala script
+to GCS, then runs `gcloud dataproc jobs submit spark` with the right
+`--packages` (JTS for geocode, `spark-sql-kafka-0-10` for streaming) and
+`$DATA_ROOT` pointed at a GCS bucket. All nine stages (clean, geocode,
+features, score, analytics, stream-produce, stream-consume, and the two
+profiling scripts) run unmodified.
+
+**Docs:** `README.md`, `PROJECT.md`, `architect.md`, and `SCALABILITY.md`
+rewritten to reflect the Scala-only, no-backend, Dataproc-native
+architecture.
+
+**Lesson:** The earlier "use Python where Python is the right tool"
+posture was correct for local development but violated the rubric's
+"all big-data processing runs on the cluster" requirement. Moving the
+scoring + analytics stages into Spark adds measurable driver startup
+overhead per run but gives us a single language for code review, one
+deployment target (Dataproc), and a uniform answer to "where does this
+run?".
+
 ## Pipeline
 
 ### Dashboard + notebook: rent-vs-feature prediction chart

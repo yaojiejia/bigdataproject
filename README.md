@@ -1,104 +1,116 @@
 # NYC Neighborhood Insights
 
-An end-to-end big-data pipeline and interactive map that helps newcomers evaluate New York City neighborhoods across **safety**, **food quality**, **quality of life (311)**, and **affordability (rent)**. Everything runs locally — no Dataproc, no HDFS.
+An end-to-end big-data pipeline and interactive map that helps newcomers evaluate New York City neighborhoods across **safety**, **food quality**, **quality of life (311)**, and **affordability (rent)**.
+
+All heavy lifting — ETL, geocoding, scoring, analytics, Kafka producing/consuming — is **Scala + Apache Spark** and runs on GCP Dataproc. Python survives only as HTTP glue in `data_ingest/`. The UI is a **static bundle** served as plain files: `hyparquet` reads the Spark-written parquet in the browser and Plotly.js / Leaflet render it.
 
 ## What it does
 
-1. **Ingests** four public datasets: NYPD crime complaints, DOHMH restaurant inspections, 311 food-safety complaints, and Zillow ZORI rent.
-2. **Cleans and enriches** them with Scala + Apache Spark (upper/trim, drop-nulls, `IS_FELONY`, `IS_CRITICAL`, rent wide-to-long melt).
-3. **Normalizes geography** by spatially joining each record to a 2020 NYC Neighborhood Tabulation Area (NTA).
-4. **Aggregates features** per neighborhood: crime totals/rates, restaurant inspection stats, complaint counts, median rent.
+1. **Ingests** four public datasets: NYPD crime complaints, DOHMH restaurant inspections, 311 food-safety complaints, and Zillow ZORI rent. *(Python, `requests` only.)*
+2. **Cleans and enriches** them with **Scala + Apache Spark** (upper/trim, drop-nulls, `IS_FELONY`, `IS_CRITICAL`, rent wide-to-long melt).
+3. **Normalizes geography** by spatially joining each record to a 2020 NYC Neighborhood Tabulation Area (NTA) using **JTS point-in-polygon** inside a broadcast Spark UDF.
+4. **Aggregates features** per neighborhood: crime totals / rates, restaurant inspection stats, complaint counts, median rent.
 5. **Combines them** into a unified **newcomer score** (z-scored, weighted, 0–100).
-6. **Streams** a simulated 311 feed through Kafka → Spark Structured Streaming with 5-minute tumbling windows.
-7. **Serves** results via a **FastAPI** backend and renders them on an **interactive Leaflet map** with metric toggles and click-through detail.
-8. **Explains** the results through an analytics dashboard (`/dashboard.html`) and a Jupyter notebook (`notebooks/analysis.ipynb`) that both render the same five charts — distribution, top/bottom 10, by-borough box plots, a correlation heatmap, and a rent-vs-feature trend line with an OLS prediction — via a shared `pipeline.analytics` module, so the web and notebook views are guaranteed to match.
+6. **Pre-computes every dashboard aggregate** — summary stats, histograms, top/bottom-10, borough box-plot summaries, a 6×6 correlation matrix, and rent-vs-predictor bins/OLS/points — into small single-file parquet tables under `data/analytics/`.
+7. **Streams** a simulated 311 feed through Kafka → Spark Structured Streaming with 5-minute tumbling windows (both sides Scala).
+8. **Renders** everything in a **backend-free static site**: Leaflet map (`index.html`) and Plotly dashboard (`dashboard.html`) fetch parquet files directly with [hyparquet](https://github.com/hyparam/hyparquet).
 
 ## Architecture
 
 ```
-raw CSVs (NYC Open Data, Zillow)
-        │   data_ingest/alexj/download.py            (Python, HTTP)
-        ▼
-data/raw/
-        │   etl_code/alexj/Clean.scala               (Scala + Spark)
-        ▼
-data/cleaned/
-        │   etl_code/alexj/geocode.py                (Python, geopandas sjoin)
-        ▼
-data/enriched/
-        │   etl_code/alexj/Features.scala            (Scala + Spark)
-        ▼
-data/scores/neighborhood_features.parquet
-        │   etl_code/alexj/score.py                  (Python, pandas z-score + weights)
-        ▼
-data/scores/newcomer_score.parquet ──► FastAPI  ──► Leaflet map
-                                        ▲
-                                        │ /trending
-                    etl_code/alexj/Consumer.scala    (Scala + Structured Streaming)
-                                        ▲
-                                        │ Kafka topic: complaints311
-                    stream/producer.py               (Python, kafka client)
+┌──────────────────────────────── GCP Dataproc (Scala / Spark) ────────────────────────────────┐
+                                                                                               
+   Python ingestion                                                                            
+   data_ingest/alexj/*.py   →   data/raw/                                                      
+                                    │  etl_code/alexj/Clean.scala                              
+                                    ▼                                                          
+                                data/cleaned/                                                  
+                                    │  etl_code/alexj/Geocode.scala   (JTS + broadcast UDF)    
+                                    ▼                                                          
+                                data/enriched/                                                 
+                                    │  etl_code/alexj/Features.scala                           
+                                    ▼                                                          
+                                data/scores/neighborhood_features.parquet                      
+                                    │  etl_code/alexj/Score.scala                              
+                                    ▼                                                          
+                                data/scores/newcomer_score.parquet                             
+                                    │  etl_code/alexj/Analytics.scala                          
+                                    ▼                                                          
+                                data/analytics/*.parquet                                       
+                                                                                               
+                                stream/Producer.scala  ──► Kafka  ──► etl_code/alexj/Consumer.scala
+                                                                         │                     
+                                                                         ▼                     
+                                                                 data/stream/latest.parquet    
+└───────────────────────────────────────────────────────────────────────────────────────────────┘
+                                               │
+                                               │ gsutil rsync (or publish web/ + data/ to GCS)
+                                               ▼
+                     ┌──────────────── Static frontend (no backend) ────────────────┐
+                     │  web/index.html        – Leaflet map, reads newcomer_score    │
+                     │  web/dashboard.html    – Plotly dashboard, reads data/analytics│
+                     │  web/lib/parquet.js    – hyparquet loader wrapper              │
+                     │  web/lib/figures.js    – Plotly figure builders                │
+                     └───────────────────────────────────────────────────────────────┘
 ```
 
-**Language split:** every Spark job is Scala (`Clean.scala`, `Features.scala`, `Consumer.scala`). Everything else — HTTP ingestion, spatial join (geopandas), 260-row scoring (pandas), Kafka producer, FastAPI, frontend — is Python or JS, because that's what each tool is best at.
+**Language split:** Scala/Spark for every big-data step; Python only for `data_ingest/` HTTP downloads; plain JS + Plotly + Leaflet for the display layer.
 
 ## Project layout
 
-The top-level layout follows the assignment rubric: `/data_ingest`, `/etl_code`, and `/profiling_code`, each with a per-member subdirectory.
+Matches the assignment rubric: `/data_ingest`, `/etl_code`, `/profiling_code`, each with a per-member subdirectory.
 
 ```
 bigdataproject/
-  data_ingest/alexj/
-    download.py          # HTTP fetch of 4 raw CSVs
-    geo_download.py      # HTTP fetch of NTA GeoJSON + population template
+  data_ingest/alexj/             # Python – HTTP ingestion only
+    download.py                  # 4 raw CSVs from NYC Open Data + Zillow
+    geo_download.py              # NTA GeoJSON + population template
+    paths.py                     # tiny, self-contained path module
 
-  etl_code/alexj/
-    Clean.scala          # Spark batch: 4 datasets -> cleaned parquet
-    Features.scala       # Spark batch: per-NTA aggregation + join
-    Consumer.scala       # Spark Structured Streaming: Kafka -> windows
-    geocode.py           # geopandas point-in-polygon; ZIP->NTA lookup
-    score.py             # pandas z-score + weighted sum -> 0-100 score
+  etl_code/alexj/                # Scala + Spark – everything else
+    Clean.scala                  # raw CSV     -> data/cleaned/*.parquet
+    Geocode.scala                # cleaned     -> data/enriched/*.parquet  (JTS PIP)
+    Features.scala               # enriched    -> data/scores/neighborhood_features.parquet
+    Score.scala                  # features    -> data/scores/newcomer_score.parquet
+    Analytics.scala              # score       -> data/analytics/*.parquet (dashboard tables)
+    Consumer.scala               # Kafka       -> 5-min tumbling windows + latest.parquet
 
-  profiling_code/alexj/
-    FirstCode.scala      # stats (mean/median/mode/stddev) + RDD map/reduce
-    CountRecs.scala      # schemas + record counts + distinct-value surveys
+  profiling_code/alexj/          # Scala + Spark – exploratory profiling
+    FirstCode.scala              # schemas + mean/median/mode + RDD map/reduce
+    CountRecs.scala              # row counts + distinct-value surveys
 
-  pipeline/              # shared infrastructure & serving layer
-    paths.py             # canonical filesystem paths (imported everywhere)
-    analytics.py         # shared dashboard figure builders (Plotly)
+  stream/                        # Scala + Spark – Kafka producer
+    Producer.scala               # enriched 311 -> Kafka topic
 
-  stream/
-    producer.py          # Kafka producer (replays 311 onto topic)
+  web/                           # Static frontend – no backend server
+    index.html  map.js           # Leaflet choropleth of newcomer score + raw features
+    dashboard.html  dashboard.js # Plotly analytics dashboard
+    lib/parquet.js               # hyparquet wrapper
+    lib/figures.js               # Plotly figure builders (port of old analytics.py)
+    style.css  dashboard.css
 
-  notebooks/
-    analysis.ipynb       # analytical notebook; imports pipeline.analytics
+  ops/submit_dataproc.sh         # wraps `gcloud dataproc jobs submit spark` per stage
+  kafka/docker-compose.yml       # local dev: single-broker Kafka + Zookeeper
+  Makefile                       # one target per stage; `make help`
 
-  api/main.py            # FastAPI on :8765 (map API + /analytics/*)
-  web/                   # Leaflet map + Plotly dashboard (:5173)
-  kafka/                 # docker-compose.yml (Zookeeper + Kafka)
-  Makefile               # one target per stage; `make help`
-
-  data/
-    raw/ cleaned/ enriched/ scores/ stream/ geo/
+  data/                          # all Spark outputs land here
+    raw/  cleaned/  enriched/  scores/  analytics/  stream/  geo/
 ```
-
-Each of the three assignment directories has its own `README.md` explaining what lives in it and how to run each script.
 
 ## Prerequisites
 
-- **Python 3.11+** — for ingestion, geocode, score, producer, API, analytics notebook
-- **Java 11** — required by Spark
-- **Apache Spark 3.5** — the Scala jobs (`Clean.scala`, `Features.scala`, `Consumer.scala`) run via `spark-shell -i`, which must be on `PATH`. Install the standalone distribution from <https://spark.apache.org/downloads.html> (or `brew install apache-spark` / `apt install spark`).
+- **Java 11** — required by Spark.
+- **Apache Spark 3.5** — the Scala jobs run via `spark-shell -i`. Install the standalone distribution from <https://spark.apache.org/downloads.html> (or `brew install apache-spark` / `apt install spark`). First run will pull `org.locationtech.jts:jts-core:1.19.0` (for geocoding) and `org.apache.spark:spark-sql-kafka-0-10:3.5.1` (for streaming) via ivy into `~/.ivy2`.
+- **Python 3.11+** — only for `data_ingest/alexj/*.py`; the one dependency is `requests` (see `requirements.txt`).
 - **Docker** — only for the Kafka streaming layer. The batch pipeline doesn't need it.
+- **GCP SDK (`gcloud`)** — only if you want to run the pipeline on Dataproc via `ops/submit_dataproc.sh`.
 
-`make setup` installs the Python dependencies (pandas, geopandas, fastapi, kafka-python, plotly, jupyter — no PySpark, since every Spark job in this project is Scala).
-
-## Running the full stack, end-to-end
+## Running the full stack, end-to-end (local)
 
 ### One-time setup
 
 ```bash
-make setup               # pip install -r requirements.txt
+make setup               # pip install requests
 make download            # ~570 MB of CSVs into data/raw/
 make geo-download        # NTA GeoJSON + population template into data/geo/
 ```
@@ -106,86 +118,84 @@ make geo-download        # NTA GeoJSON + population template into data/geo/
 ### Batch pipeline (one command)
 
 ```bash
-make pipeline            # Clean.scala -> geocode.py -> Features.scala -> score.py
+make pipeline            # Clean.scala -> Geocode.scala -> Features.scala -> Score.scala -> Analytics.scala
 ```
 
 Produces:
 
 - `data/cleaned/{crime,restaurants,complaints311,rent}/*.parquet`
 - `data/enriched/{crime,restaurants,complaints311,rent}/*.parquet`
-- `data/scores/neighborhood_features.parquet` (one row per NTA)
-- `data/scores/newcomer_score.parquet` (newcomer score 0–100)
+- `data/scores/neighborhood_features.parquet/` (Spark directory)
+- `data/scores/newcomer_score.parquet` (single file — what the frontend reads)
+- `data/analytics/*.parquet` (nine single-file tables feeding the dashboard)
 
-Wall time on a laptop: ~1 minute for `clean`, ~4 s for `geocode`, ~12 s for `features`, ~1 s for `score`.
+Wall time on an 8-core laptop: ~1 min for `clean`, ~45 s for `geocode` (JTS PIP on ~500 k points), ~12 s for `features`, ~5 s for `score`, ~10 s for `analytics`.
 
-### Run all services (5 terminals)
+### Serve the static site
 
-Once the batch pipeline has produced the Parquet outputs, bring up the live services. Each command is long-running; **open a fresh terminal per command** (tmux, VS Code split terminals, WSL panes — whatever works).
+The dashboard + map read parquet directly from disk via `../data/...`, so any static file server works. The Makefile target uses Python's stdlib `http.server` as a convenience only — Python plays **no** runtime role:
 
 ```bash
-# Terminal 1: Kafka (via Docker)
-make stream-up
-# (leave this terminal; it returns once `docker compose up -d` completes)
+make web                 # http://localhost:5173
+# equivalent: npx http-server . -p 5173
+#             caddy file-server --root . --listen :5173
+```
 
-# Terminal 2: Structured Streaming consumer (Scala)
+Open <http://localhost:5173/web/>. The map loads `data/scores/newcomer_score.parquet` directly, builds a GeoJSON against `data/geo/nta.geojson`, and re-styles in-place when you switch metric. Click **Open analytics dashboard** (or go to <http://localhost:5173/web/dashboard.html>) to see the five charts: distribution histogram, top/bottom 10, by-borough box plots, correlation heatmap, and rent-vs-feature trend with an OLS prediction. All figures are built in the browser from the nine parquet aggregates `Analytics.scala` emits.
+
+### Live streaming (3 terminals)
+
+```bash
+# Terminal 1: Kafka via Docker
+make stream-up
+
+# Terminal 2: Spark Structured Streaming consumer (Scala)
 make stream-consume
 
-# Terminal 3: 311 producer (replays historical 311 into Kafka)
+# Terminal 3: Scala Kafka producer (replays enriched 311 onto topic)
 make stream-produce
-
-# Terminal 4: FastAPI backend
-make api                 # http://localhost:8765
-
-# Terminal 5: static web server
-make web                 # http://localhost:5173
 ```
 
-Open <http://localhost:5173/> in your browser. The map loads `/neighborhoods?metric=score` from the API; switch metrics in the sidebar dropdown (Newcomer Score, Crime, Food Safety, Recent 311, Median Rent).
+Consumer writes 5-minute windows to `data/stream/windowed/` and snapshot counts to `data/stream/latest.parquet`. Shut down with Ctrl-C and `make stream-down`.
 
-Click **Open analytics dashboard** in the sidebar (or go to <http://localhost:5173/dashboard.html>) to see the five analytical charts: distribution histogram, top/bottom 10 NTAs, by-borough box plots, input-feature correlation heatmap, and a rent-vs-feature trend chart with an OLS prediction (pick a predictor — crime, felony share, inspection score, critical rate, or 311 rate — and the chart shows a decile-binned median rent line with an IQR band, a best-fit line with slope and R², and every NTA as a borough-coloured dot).
+## Running on Dataproc
 
-### The notebook — same charts, more depth
+1. Upload the raw CSVs + geojson to GCS:
 
-The dashboard has a Python twin at `notebooks/analysis.ipynb`. Both call the same `pipeline.analytics` functions, so the five shared charts render pixel-for-pixel identically. The notebook adds a table of OLS fit parameters for every rent predictor, sub-score decomposition, a safety-vs-affordability scatter, an outlier rank-diff analysis, and written interpretation.
+   ```bash
+   gsutil -m rsync -r data/raw gs://$BUCKET/data/raw
+   gsutil -m rsync -r data/geo gs://$BUCKET/data/geo
+   ```
 
-```bash
-# From the project root, with the venv active:
-jupyter notebook notebooks/analysis.ipynb
-# or render headless:
-jupyter nbconvert --to html --execute notebooks/analysis.ipynb
-```
+2. Create a cluster (any 2-worker n2-standard-4 will do):
 
-### Shutting down
+   ```bash
+   gcloud dataproc clusters create nyc-insights \
+     --region=us-central1 \
+     --image-version=2.2-debian12 \
+     --num-workers=2 \
+     --worker-machine-type=n2-standard-4
+   ```
 
-```bash
-# Ctrl-C in terminals 2, 3, 4, 5
-make stream-down         # docker compose down
-```
+3. Submit each Scala stage — the helper script wraps `gcloud dataproc jobs submit spark`:
 
-## API endpoints
+   ```bash
+   export DATAPROC_CLUSTER=nyc-insights
+   export DATAPROC_REGION=us-central1
+   export GCS_DATA_ROOT=gs://$BUCKET/data
 
-| Endpoint | Purpose |
-|---|---|
-| `GET /health` | liveness + NTA count |
-| `GET /neighborhoods?metric=score\|crime\|food\|rent\|311` | GeoJSON FeatureCollection with selected metric attached |
-| `GET /neighborhood/{nta_code}` | full feature record for one NTA |
-| `GET /trending?limit=N` | top N NTAs by complaint count in the most recent streaming window |
-| `GET /analytics/summary` | descriptive stats per metric (mean/median/min/max/std) |
-| `GET /analytics/distribution?metric=...` | Plotly figure JSON: histogram of the metric across NTAs |
-| `GET /analytics/top-bottom?metric=...&n=10` | Plotly figure JSON: top-N vs. bottom-N NTAs |
-| `GET /analytics/by-borough?metric=...` | Plotly figure JSON: box plot by borough |
-| `GET /analytics/correlation` | Plotly figure JSON: correlation heatmap of the six input features |
-| `GET /analytics/rent-vs?feature=...` | Plotly figure JSON: median rent vs one of five predictors (`crimes_per_1k`, `felony_share`, `avg_score`, `critical_rate`, `complaints_per_1k`) — decile-binned trend line + IQR band + OLS fit |
+   ops/submit_dataproc.sh pipeline              # clean → geocode → features → score → analytics
+   ops/submit_dataproc.sh stream-consume        # structured streaming on the cluster
+   ```
 
-## Running on Dataproc (optional)
+4. Sync the generated parquet back for local dashboarding, or publish `web/` + `data/` to a GCS static site:
 
-The Scala scripts are location-transparent. Set `HDFS_USER` and paths swap from the local filesystem to `hdfs:///user/$HDFS_USER/...`:
+   ```bash
+   gsutil -m rsync -r gs://$BUCKET/data ./data
+   make web
+   ```
 
-```bash
-# On the Dataproc master, after uploading raw CSVs to HDFS:
-HDFS_USER=$USER spark-shell --master yarn --deploy-mode client -i etl_code/alexj/Clean.scala
-HDFS_USER=$USER spark-shell --master yarn --deploy-mode client -i etl_code/alexj/Features.scala
-```
+   Or for hosted serving: `gsutil -m cp -r web data gs://$STATIC_BUCKET/` and configure the bucket as a website.
 
 ## Data sources
 
@@ -199,6 +209,7 @@ HDFS_USER=$USER spark-shell --master yarn --deploy-mode client -i etl_code/alexj
 
 ## Notes
 
-- Population is optional. Drop a populated CSV at `data/geo/nta_population.csv` (columns `nta_code,nta_name,population`) and `Features.scala` will compute per-capita rates. Otherwise raw totals are used as the intensity signal.
-- ZIP → NTA mapping is derived from the restaurant dataset's points (each ZIP assigned to the NTA containing the plurality of its restaurants). Replace `etl_code/alexj/geocode.py::build_zip_to_nta` if you have a proper ZCTA shapefile.
-- Scala Spark jobs are invoked via `spark-shell -i <path>.scala` with tuning configs (shuffle partitions, AQE, broadcast threshold, driver memory) applied from the Makefile's `SPARK_TUNE` variable. See `SCALABILITY.md`.
+- **Population is optional.** Drop a populated CSV at `data/geo/nta_population.csv` (columns `nta_code,nta_name,population`) and `Features.scala` will compute per-capita rates. Otherwise raw totals are used.
+- **ZIP → NTA mapping** is derived inside `Geocode.scala` from the restaurant dataset (each ZIP assigned to the NTA containing the plurality of its restaurants). Replace with a proper ZCTA shapefile if you have one.
+- **Spark tuning** (shuffle partitions, AQE, broadcast threshold, driver memory) is applied via the Makefile's `SPARK_TUNE` variable. See `SCALABILITY.md`.
+- **No Python at serve time.** The dashboard and map are pure static files. The only Python runtime is `requests` in the two download scripts.

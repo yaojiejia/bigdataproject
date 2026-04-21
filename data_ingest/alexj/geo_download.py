@@ -13,7 +13,7 @@ from pathlib import Path
 
 import requests
 
-from pipeline.paths import GEO, NTA_GEOJSON, NTA_POPULATION, ensure_dirs
+from data_ingest.alexj.paths import GEO, NTA_GEOJSON, NTA_POPULATION, ensure_dirs
 
 NTA_GEOJSON_URL = "https://data.cityofnewyork.us/api/geospatial/9nt8-h7nd?method=export&format=GeoJSON"
 

@@ -1,15 +1,21 @@
 .PHONY: setup download geo-download \
-        clean geocode features score pipeline \
+        clean geocode features score analytics pipeline \
         stream-up stream-down stream-produce stream-consume \
         profile-first profile-counts \
-        api web all help
+        web all help dataproc-submit
 
 PYTHON       ?= python3
 PIP          ?= pip3
 DATA_ROOT    ?= $(PWD)/data
 SPARK_SHELL  ?= spark-shell
 SPARK_MASTER ?= local[*]
+
+# Kafka-on-Spark integration (shared by Consumer + Producer).
 KAFKA_PKG    ?= org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1
+
+# JTS for Geocode.scala's point-in-polygon join. ~5 MB jar, pure-Java,
+# resolved via ivy on first run and cached in ~/.ivy2.
+JTS_PKG      ?= org.locationtech.jts:jts-core:1.19.0
 
 # Scalability tuning — applied to every Scala Spark job. See SCALABILITY.md
 # for the rationale behind each number.
@@ -33,34 +39,39 @@ SPARK_OPTS   ?= --master $(SPARK_MASTER) \
                 --conf spark.log.level=WARN \
                 $(SPARK_TUNE)
 
+WEB_PORT     ?= 5173
+
 help:
-	@echo "Data ingestion  (data_ingest/alexj/):"
+	@echo "Data ingestion  (data_ingest/alexj/   — Python, HTTP glue only):"
 	@echo "  download         - fetch 4 raw CSVs into data/raw/"
 	@echo "  geo-download     - fetch NTA GeoJSON + population template"
 	@echo ""
-	@echo "ETL / batch       (etl_code/alexj/):"
-	@echo "  clean            - Clean.scala    : raw CSV -> data/cleaned/*.parquet"
-	@echo "  geocode          - geocode.py     : NTA spatial join (geopandas)"
-	@echo "  features         - Features.scala : per-NTA aggregations -> data/scores/"
-	@echo "  score            - score.py       : z-score + weighted sum (pandas)"
-	@echo "  pipeline         - clean -> geocode -> features -> score"
+	@echo "ETL / batch       (etl_code/alexj/    — Scala/Spark):"
+	@echo "  clean            - Clean.scala     : raw CSV -> data/cleaned/*.parquet"
+	@echo "  geocode          - Geocode.scala   : JTS point-in-polygon + ZIP->NTA modal"
+	@echo "  features         - Features.scala  : per-NTA aggregations -> data/scores/"
+	@echo "  score            - Score.scala     : z-scores + weighted sum -> 0-100"
+	@echo "  analytics        - Analytics.scala : pre-aggregated parquet for dashboard"
+	@echo "  pipeline         - clean -> geocode -> features -> score -> analytics"
 	@echo ""
-	@echo "ETL / streaming   (etl_code/alexj/):"
+	@echo "ETL / streaming   (stream/ + etl_code/alexj/ — Scala/Spark):"
 	@echo "  stream-up        - start Kafka via docker-compose"
 	@echo "  stream-down      - stop Kafka"
-	@echo "  stream-produce   - producer.py replays 311 records onto Kafka topic"
-	@echo "  stream-consume   - Consumer.scala : Kafka -> 5-min windows -> parquet"
+	@echo "  stream-produce   - Producer.scala  : replay 311 records onto Kafka"
+	@echo "  stream-consume   - Consumer.scala  : Kafka -> 5-min windows -> parquet"
 	@echo ""
-	@echo "Profiling         (profiling_code/alexj/):"
+	@echo "Profiling         (profiling_code/alexj/ — Scala/Spark):"
 	@echo "  profile-first    - FirstCode.scala  : schemas + mean/median/mode + RDD map/reduce"
 	@echo "  profile-counts   - CountRecs.scala  : row counts + distinct-value surveys"
 	@echo ""
-	@echo "Serving layer:"
-	@echo "  api              - uvicorn FastAPI on :8765"
-	@echo "  web              - Leaflet static frontend on :5173"
+	@echo "Serving:"
+	@echo "  web              - static file server on :$(WEB_PORT) (Python stdlib as convenience)"
+	@echo ""
+	@echo "Dataproc:"
+	@echo "  dataproc-submit  - ops/submit_dataproc.sh (wraps 'gcloud dataproc jobs submit spark')"
 	@echo ""
 	@echo "Meta:"
-	@echo "  setup            - pip install requirements"
+	@echo "  setup            - pip install requirements (just 'requests' now)"
 	@echo "  all              - download + geo-download + pipeline"
 
 setup:
@@ -80,17 +91,20 @@ clean:
 	DATA_ROOT=$(DATA_ROOT) $(SPARK_SHELL) $(SPARK_OPTS) -i etl_code/alexj/Clean.scala
 
 geocode: geo-download
-	$(PYTHON) -m etl_code.alexj.geocode
+	DATA_ROOT=$(DATA_ROOT) $(SPARK_SHELL) $(SPARK_OPTS) --packages $(JTS_PKG) -i etl_code/alexj/Geocode.scala
 
 features:
 	DATA_ROOT=$(DATA_ROOT) $(SPARK_SHELL) $(SPARK_OPTS) -i etl_code/alexj/Features.scala
 
 score:
-	$(PYTHON) -m etl_code.alexj.score
+	DATA_ROOT=$(DATA_ROOT) $(SPARK_SHELL) $(SPARK_OPTS) -i etl_code/alexj/Score.scala
 
-pipeline: clean geocode features score
+analytics:
+	DATA_ROOT=$(DATA_ROOT) $(SPARK_SHELL) $(SPARK_OPTS) -i etl_code/alexj/Analytics.scala
 
-# ---- Streaming (consumer is ETL; producer is glue) ------------------------
+pipeline: clean geocode features score analytics
+
+# ---- Streaming ------------------------------------------------------------
 
 stream-up:
 	docker compose -f kafka/docker-compose.yml up -d
@@ -99,16 +113,14 @@ stream-down:
 	docker compose -f kafka/docker-compose.yml down
 
 stream-produce:
-	$(PYTHON) -m stream.producer
+	DATA_ROOT=$(DATA_ROOT) $(SPARK_SHELL) $(SPARK_OPTS) --packages $(KAFKA_PKG) -i stream/Producer.scala
 
 stream-consume:
 	DATA_ROOT=$(DATA_ROOT) $(SPARK_SHELL) $(SPARK_OPTS) --packages $(KAFKA_PKG) -i etl_code/alexj/Consumer.scala
 
 # ---- Profiling (code lives in profiling_code/alexj/) ----------------------
-# FirstCode.scala and CountRecs.scala are exploratory surveying scripts
-# (record counts, distinct values, mean/median/mode). They aren't part of
-# the production pipeline — run them ad-hoc when you want to re-profile a
-# dataset after a schema change.
+# Profiling is exploratory. Run ad-hoc when you want to re-profile a
+# dataset after a schema change; not part of the production pipeline.
 
 profile-first:
 	DATA_ROOT=$(DATA_ROOT) $(SPARK_SHELL) $(SPARK_OPTS) -i profiling_code/alexj/FirstCode.scala
@@ -116,12 +128,19 @@ profile-first:
 profile-counts:
 	DATA_ROOT=$(DATA_ROOT) $(SPARK_SHELL) $(SPARK_OPTS) -i profiling_code/alexj/CountRecs.scala
 
-# ---- Serving --------------------------------------------------------------
-
-api:
-	uvicorn api.main:app --reload --host 0.0.0.0 --port 8765
+# ---- Static web frontend --------------------------------------------------
+# The dashboard + map are a pure static bundle; they read parquet directly
+# with hyparquet in the browser. Any static server works — we use Python's
+# http.server here only because it's already on the machine (it is NOT part
+# of the big-data surface). Substitute `npx http-server web -p $(WEB_PORT)`
+# or `caddy file-server --root web --listen :$(WEB_PORT)` if you prefer.
 
 web:
-	$(PYTHON) -m http.server 5173 --directory web
+	$(PYTHON) -m http.server $(WEB_PORT) --directory $(PWD) --bind 127.0.0.1
+
+# ---- Dataproc helper ------------------------------------------------------
+
+dataproc-submit:
+	bash ops/submit_dataproc.sh $(ARGS)
 
 all: download geo-download pipeline
