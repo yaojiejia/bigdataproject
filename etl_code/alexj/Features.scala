@@ -24,6 +24,31 @@ import org.apache.spark.sql.functions._
 
 val dataRoot = sys.env.getOrElse("DATA_ROOT", "./data")
 
+// ---- Rent overrides -------------------------------------------------------
+//
+// Zillow's ZORI only covers ZIPs with an active residential rental market
+// and a sufficient number of single-family + multi-family listings. A
+// handful of residential Manhattan NTAs don't satisfy the threshold and
+// come out as NULL in the aggregation below. Without an override those
+// NTAs either (a) get mean-imputed by Score.scala and end up looking
+// artificially "average" on affordability, or (b) get flagged as
+// unscored by the data-starved gate there. Neither is accurate for
+// well-populated Manhattan neighborhoods.
+//
+// The values below are curated medians (rounded $/month) collected from
+// contemporary listings aggregators (Zumper, StreetEasy, RentCafe).
+// Observed ZORI always wins: this map only fills TRUE nulls. When a row
+// is filled this way we set `median_rent_imputed = true` so downstream
+// consumers can treat it differently if they want.
+//
+// Keyed by NTA 2020 code (6 chars) because codes are frozen; names are not.
+val RENT_OVERRIDES: Map[String, Double] = Map(
+  "MN0601" -> 5775.0, // Stuyvesant Town-Peter Cooper Village
+  "MN0301" -> 5500.0, // Chinatown-Two Bridges
+  "MN0602" -> 6300.0, // Gramercy
+  "MN0402" -> 4475.0  // Hell's Kitchen
+)
+
 // Iteration note: geocode.py writes enriched parquet via pandas/pyarrow, which
 // emits nanosecond-precision timestamps (INT64 TIMESTAMP(NANOS)). Spark 3.5
 // rejects that type by default ("Illegal Parquet type: INT64 (TIMESTAMP(NANOS,
@@ -119,7 +144,9 @@ loadPopulation() match {
       .withColumn("complaints_per_1k", col("n_complaints").cast("double"))
 }
 
-// Fill structural nulls (NTA with no restaurants, etc.). Rent stays nullable.
+// Fill structural nulls (NTA with no restaurants, etc.). Rent stays nullable
+// here — we handle it in the dedicated override block below so we can track
+// observed vs. imputed separately.
 val fill: Map[String, Any] = Map(
   "total_crimes"      -> 0L,
   "felonies"          -> 0L,
@@ -131,6 +158,34 @@ val fill: Map[String, Any] = Map(
   "complaints_per_1k" -> 0.0
 )
 joined = joined.na.fill(fill)
+
+// ---- Rent override: fill known-null NTAs from the curated table ----------
+//
+// We do this AFTER the na.fill above (which doesn't touch median_rent_zori)
+// and BEFORE the parquet write, so the override is the last word on what
+// rent value each row carries. `coalesce` means any observed ZORI value
+// takes precedence; only pre-existing nulls pick up the override.
+if (RENT_OVERRIDES.nonEmpty) {
+  // Build a single Column that returns the override amount for a given
+  // NTA code (or NULL when the code isn't in the table). `element_at` on
+  // a typed map Column is the idiomatic lookup in Spark — same pattern
+  // Analytics.scala uses for BOROUGH_FROM_CODE.
+  val overrideCol = element_at(typedLit(RENT_OVERRIDES), col("nta_code"))
+  joined = joined
+    .withColumn("median_rent_imputed",
+      col("median_rent_zori").isNull && overrideCol.isNotNull)
+    .withColumn("median_rent_zori",
+      coalesce(col("median_rent_zori"), overrideCol))
+
+  val imputed = joined.filter(col("median_rent_imputed")).select("nta_code", "nta_name", "median_rent_zori")
+  val nImputed = imputed.count()
+  if (nImputed > 0) {
+    println(s"\n[features] imputed median_rent_zori for $nImputed NTA(s) from RENT_OVERRIDES:")
+    imputed.orderBy("nta_code").show(false)
+  }
+} else {
+  joined = joined.withColumn("median_rent_imputed", lit(false))
+}
 
 val n = joined.count()
 println(f"[features] $n%,d NTAs with aggregated features")

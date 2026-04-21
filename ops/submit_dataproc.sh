@@ -46,27 +46,23 @@ GCS_SCRIPT_ROOT="${GCS_SCRIPT_ROOT:-${GCS_DATA_ROOT}/_scripts}"
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-KAFKA_PKG="org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1"
 JTS_PKG="org.locationtech.jts:jts-core:1.19.0"
 
 stage_script() {
   case "$1" in
-    clean)          echo "etl_code/alexj/Clean.scala" ;;
-    geocode)        echo "etl_code/alexj/Geocode.scala" ;;
-    features)       echo "etl_code/alexj/Features.scala" ;;
-    score)          echo "etl_code/alexj/Score.scala" ;;
-    analytics)      echo "etl_code/alexj/Analytics.scala" ;;
-    stream-produce) echo "stream/Producer.scala" ;;
-    stream-consume) echo "etl_code/alexj/Consumer.scala" ;;
+    clean)     echo "etl_code/alexj/Clean.scala" ;;
+    geocode)   echo "etl_code/alexj/Geocode.scala" ;;
+    features)  echo "etl_code/alexj/Features.scala" ;;
+    score)     echo "etl_code/alexj/Score.scala" ;;
+    analytics) echo "etl_code/alexj/Analytics.scala" ;;
     *) echo "unknown stage: $1" >&2; return 2 ;;
   esac
 }
 
 stage_packages() {
   case "$1" in
-    geocode)                        echo "$JTS_PKG" ;;
-    stream-produce|stream-consume)  echo "$KAFKA_PKG" ;;
-    *)                              echo "" ;;
+    geocode) echo "$JTS_PKG" ;;
+    *)       echo "" ;;
   esac
 }
 
@@ -149,7 +145,7 @@ expand_aliases() {
 
 if [[ $# -eq 0 ]]; then
   echo "usage: $0 <stage> [<stage> ...]" >&2
-  echo "stages: clean geocode features score analytics stream-produce stream-consume pipeline" >&2
+  echo "stages: clean geocode features score analytics pipeline" >&2
   exit 2
 fi
 

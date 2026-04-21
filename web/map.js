@@ -13,18 +13,12 @@ import { loadParquet } from "./lib/parquet.js";
 const NTA_GEOJSON   = "../data/geo/nta.geojson";
 const SCORE_PARQUET = "../data/scores/newcomer_score.parquet";
 
-// Attempt to also read the streaming sink (may not exist on first boot —
-// we handle the 404 gracefully). The Consumer.scala writes a directory,
-// so we need a deterministic filename inside it. We publish a manifest
-// at init time by polling both shapes.
-const STREAM_LATEST_DIR = "../data/stream/latest.parquet";
-
 const METRIC_LABELS = {
   score: "Newcomer Score",
   crime: "Crime intensity",
   food:  "Critical inspection rate",
   rent:  "Median rent (ZORI)",
-  "311": "Recent 311 complaints",
+  "311": "311 complaints",
 };
 
 const METRIC_UNITS = {
@@ -46,14 +40,22 @@ const METRIC_COLUMN = {
 
 const HIGHER_IS_BETTER = new Set(["score"]);
 
-const RAMP_POS = ["#f3f0ff", "#dcd6f7", "#b9acee", "#9580e0", "#7459cc", "#5a3ab2", "#422388", "#2e1065"];
-const RAMP_NEG = ["#fff5eb", "#fee6ce", "#fdd0a2", "#fdae6b", "#fd8d3c", "#f16913", "#d94801", "#7f2704"];
+// Editorial sequential ramps, designed to sit on warm paper:
+//   POS = forest greens (higher is better — the newcomer score)
+//   NEG = baked earth (higher is worse — crime, 311, rent, etc.)
+// The lightest stop is intentionally tinted so it doesn't dissolve
+// into the #f6f3ec background of the page.
+const RAMP_POS = ["#eef3e7", "#d7e1c3", "#bccf9c", "#9ebb75", "#7ea554", "#608a3d", "#44702b", "#2c5220"];
+const RAMP_NEG = ["#f4ebdc", "#e8d1ad", "#dbb07e", "#cc8758", "#b85d3c", "#963e2b", "#722821", "#4c1917"];
 
 const map = L.map("map", { preferCanvas: true, zoomControl: false })
   .setView([40.73, -73.97], 11);
 L.control.zoom({ position: "bottomright" }).addTo(map);
 
-L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+// CARTO "positron_nolabels" keeps the basemap quiet so the choropleth
+// carries the colour story. Labels are omitted on purpose; neighborhood
+// names come from the tooltip, and streets are not the story.
+L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
   attribution: "© OpenStreetMap · © CARTO",
   subdomains: "abcd",
   maxZoom: 19,
@@ -93,7 +95,7 @@ function quantileBreaks(values, n = 7) {
 }
 
 function colorFor(value, breaks) {
-  if (value == null || !Number.isFinite(value)) return "#e2e8f0";
+  if (value == null || !Number.isFinite(value)) return "#e4ded3";
   const ramp = currentRamp();
   let i = 0;
   while (i < breaks.length && value > breaks[i]) i++;
@@ -104,8 +106,8 @@ function styleFeature(f) {
   const v = f.properties && f.properties.metric_value;
   return {
     fillColor: colorFor(v, STATE.breaks),
-    fillOpacity: 0.82,
-    color: "#ffffff",
+    fillOpacity: 0.88,
+    color: "#f6f3ec",
     weight: 0.6,
   };
 }
@@ -184,20 +186,29 @@ function renderDetail(props, ranges) {
     { key: "311 complaints",         val: fmt(f.n_complaints, 0),       pct: barPct(f.n_complaints,     ranges.n_complaints,     true) },
     { key: "Median rent (ZORI)",     val: fmtMoney(f.median_rent_zori), pct: barPct(f.median_rent_zori, ranges.median_rent_zori, true) },
   ];
-  const scoreColor = score == null ? "var(--text-dim)" :
+  const scoreColor = score == null ? "var(--ink-dim)" :
     score >= 66 ? "var(--good)" :
-    score >= 33 ? "var(--accent)" : "var(--bad)";
+    score >= 33 ? "var(--warn)" : "var(--bad)";
+  // A null score means Score.scala's data-starved gate flagged this NTA
+  // (no ZORI rent + fewer than MIN_INSPECTIONS inspections). We surface
+  // that explicitly instead of just hiding the badge, so the reader
+  // understands the absence is intentional, not a rendering glitch.
+  const scoreBlock = score != null
+    ? `<div class="score-badge">
+         <span class="value" style="color:${scoreColor}">${fmt(score, 1)}</span>
+         <span class="out-of">/ 100</span>
+         <span class="label">Newcomer&nbsp;Score</span>
+       </div>`
+    : `<div class="score-badge score-badge-na">
+         <span class="value na">N/A</span>
+         <span class="na-note">Not enough rent or restaurant data to score.</span>
+       </div>`;
   el.innerHTML = `
     <div class="detail-head">
       <h2>${props.nta_name || props.ntaname || props.nta_code || "Unknown"}</h2>
       <div class="code">${props.nta_code || ""}</div>
     </div>
-    ${score != null ? `
-      <div class="score-badge">
-        <span class="value" style="color:${scoreColor}">${fmt(score, 1)}</span>
-        <span class="out-of">/ 100</span>
-        <span class="label">Newcomer&nbsp;Score</span>
-      </div>` : ""}
+    ${scoreBlock}
     <div class="metric-list">
       ${rows.map((r) => `
         <div class="metric-row">
@@ -218,19 +229,19 @@ function onEachFeature(feature, layer) {
 
   layer.on({
     mouseover: (e) => {
-      e.target.setStyle({ weight: 2, color: "#0f172a" });
+      e.target.setStyle({ weight: 1.5, color: "#1a1815" });
       e.target.bringToFront();
     },
     mouseout: (e) => {
       if (e.target !== STATE.selectedLayer) {
-        e.target.setStyle({ weight: 0.6, color: "#ffffff" });
+        e.target.setStyle({ weight: 0.6, color: "#f6f3ec" });
       }
     },
     click: () => {
       if (STATE.selectedLayer && STATE.selectedLayer !== layer) {
-        STATE.selectedLayer.setStyle({ weight: 0.6, color: "#ffffff" });
+        STATE.selectedLayer.setStyle({ weight: 0.6, color: "#f6f3ec" });
       }
-      layer.setStyle({ weight: 2.5, color: "#0f172a" });
+      layer.setStyle({ weight: 2, color: "#1a1815" });
       layer.bringToFront();
       STATE.selectedLayer = layer;
       const ranges = computeMetricRanges(STATE.merged);
@@ -283,7 +294,7 @@ function applyMetric(metric) {
   STATE.geoLayer = L.geoJSON(STATE.merged, { style: styleFeature, onEachFeature }).addTo(map);
   try { map.fitBounds(STATE.geoLayer.getBounds(), { padding: [20, 20] }); } catch (_) {}
   renderLegend(STATE.breaks);
-  statusText(`${STATE.merged.features.length} neighborhoods loaded`, "ok");
+  statusText(`${STATE.merged.features.length} neighborhoods · ${METRIC_LABELS[STATE.metric]}`, "ok");
   if (STATE.selectedLayer) {
     const ranges = computeMetricRanges(STATE.merged);
     renderDetail(STATE.selectedLayer.feature.properties || {}, ranges);
@@ -308,7 +319,7 @@ document.getElementById("metric-pills").addEventListener("click", (ev) => {
 // ---- Boot ----------------------------------------------------------------
 
 (async function init() {
-  statusText("Loading neighborhood data…", "loading");
+  statusText("Loading…", "loading");
   try {
     const [geoResp, scoreTable] = await Promise.all([
       fetch(NTA_GEOJSON),
@@ -327,7 +338,7 @@ document.getElementById("metric-pills").addEventListener("click", (ev) => {
   } catch (err) {
     console.error(err);
     statusText(
-      "Couldn't load data. Did you run `make pipeline`?",
+      "Couldn't load the data — have you run `make pipeline`?",
       "error"
     );
   }

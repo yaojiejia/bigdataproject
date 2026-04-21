@@ -1,143 +1,151 @@
-/* Dashboard page — extends style.css for charts grid. */
+/* ============================================================
+ * Dashboard-only styles. Extends style.css.
+ *
+ * Same editorial light palette. A few deliberate choices:
+ *   - No sticky glassmorphism header (backdrop-blur) — replaced with
+ *     a plain band and a 1px bottom rule.
+ *   - Cards use the same white surface + warm rule as the sidebar.
+ *     No gradients, no shadows beyond a 1px "printing press" rule.
+ *   - The headline uses the serif stack, tone-matched to the sidebar.
+ * ============================================================ */
 
 body.dashboard-body {
   display: block;
   overflow: auto;
   min-height: 100vh;
-  background: linear-gradient(180deg, #0b1120 0%, #0f172a 100%);
+  background: var(--paper);
 }
 
+/* Masthead band */
+
 .dash-header {
-  position: sticky;
-  top: 0;
-  z-index: 10;
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 14px 28px;
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--border-subtle);
+  align-items: baseline;
+  padding: 22px 32px 18px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
 }
 
 .dash-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 11px;
+  font-family: var(--sans);
+  font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
 }
-.dash-brand .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 12px var(--accent);
+.dash-brand em {
+  font-style: normal;
+  color: var(--ink);
 }
 
 .dash-nav .dash-link {
-  color: var(--text-muted);
+  color: var(--ink-muted);
   text-decoration: none;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
-  padding: 6px 12px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-subtle);
-  transition: all 0.15s ease;
+  border-bottom: 1px solid transparent;
+  padding-bottom: 2px;
+  transition: color 120ms ease, border-color 120ms ease;
 }
 .dash-nav .dash-link:hover {
-  color: var(--text);
-  border-color: var(--border);
-  background: var(--bg-elev);
+  color: var(--ink);
+  border-bottom-color: var(--ink);
 }
+
+/* Article-style body column */
 
 .dash-main {
-  max-width: 1400px;
+  max-width: 1280px;
   margin: 0 auto;
-  padding: 32px 28px 48px;
+  padding: 40px 32px 56px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 28px;
 }
 
-.dash-intro h1 {
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  margin: 0 0 8px 0;
-  color: var(--text);
+.dash-intro {
+  max-width: 640px;
+  padding-bottom: 8px;
 }
-.dash-intro p.sub {
+.dash-intro h1 {
+  font-family: var(--serif);
+  font-size: 40px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  margin: 0 0 12px 0;
+  color: var(--ink);
+}
+.dash-intro h1 em {
+  font-style: italic;
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+.dash-intro p.dek {
   margin: 0;
-  max-width: 820px;
-  color: var(--text-muted);
-  font-size: 14px;
+  color: var(--ink-muted);
+  font-size: 14.5px;
   line-height: 1.6;
 }
-.dash-intro code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12.5px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--bg-elev);
-  color: var(--accent-hover);
-  border: 1px solid var(--border-subtle);
-}
+
+/* Controls row — inline, no heavy card */
 
 .dash-controls {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 14px 18px;
-  background: var(--bg-elev);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
+  padding: 12px 0 14px;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
 }
-.dash-controls .section-label { margin: 0; }
+.dash-controls .section-label { margin: 0; color: var(--ink-muted); }
 .dash-controls .metric-pills {
   display: flex;
   grid-template-columns: none;
-  gap: 6px;
+  gap: 4px;
   flex-wrap: wrap;
 }
-.dash-controls .metric-pills button { padding: 8px 14px; }
+.dash-controls .metric-pills button { padding: 7px 12px; }
 
-/* Summary stat strip */
+/* Summary stat strip: editorial table row, not cards. */
 
 .summary-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
 }
 .summary-card {
-  background: var(--bg-elev);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  padding: 14px 16px;
+  padding: 14px 18px;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  border-right: 1px solid var(--rule);
 }
+.summary-card:last-child { border-right: 0; }
 .summary-card .label {
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 600;
-  color: var(--text-dim);
+  color: var(--ink-muted);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
 }
 .summary-card .value {
+  font-family: var(--serif);
   font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--text);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
+  line-height: 1.15;
 }
 .summary-card .sub {
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--ink-dim);
   font-variant-numeric: tabular-nums;
 }
 
@@ -150,34 +158,37 @@ body.dashboard-body {
 }
 
 .chart-card {
-  background: var(--bg-elev);
-  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+  border: 1px solid var(--rule);
   border-radius: var(--radius);
-  padding: 18px;
+  padding: 20px 20px 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
   min-height: 460px;
+  box-shadow: var(--shadow-card);
 }
 
 .chart-card-head {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--border-subtle);
+  gap: 6px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--rule);
 }
 .chart-card-head h2 {
-  font-size: 15px;
-  font-weight: 600;
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 500;
   margin: 0;
-  color: var(--text);
-  letter-spacing: -0.01em;
+  color: var(--ink);
+  letter-spacing: -0.015em;
+  line-height: 1.2;
 }
 .chart-card-head p.chart-hint {
   margin: 0;
   font-size: 12.5px;
-  color: var(--text-muted);
+  color: var(--ink-muted);
   line-height: 1.5;
 }
 
@@ -192,7 +203,6 @@ body.dashboard-body {
   background: transparent !important;
 }
 
-/* Wide card for the rent-vs predictor chart — spans full row of the grid. */
 .chart-card-wide {
   grid-column: 1 / -1;
   min-height: 560px;
@@ -205,11 +215,10 @@ body.dashboard-body {
   flex-wrap: wrap;
 }
 
-/* Predictor pill selector — same visual language as .metric-pills. */
 .predictor-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
   align-self: flex-start;
 }
 .predictor-pills button {
@@ -217,22 +226,21 @@ body.dashboard-body {
   font-size: 12px;
   font-weight: 500;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-elev-2, var(--bg-elev));
-  color: var(--text-muted);
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--ink-muted);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
   font-family: inherit;
 }
 .predictor-pills button:hover {
-  color: var(--text);
-  border-color: var(--border);
+  color: var(--ink);
+  border-color: var(--rule-strong);
 }
 .predictor-pills button.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #0b1120;
-  font-weight: 600;
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #f6f3ec;
 }
 
 .chart-error {
@@ -242,15 +250,17 @@ body.dashboard-body {
   height: 100%;
   color: var(--bad);
   font-size: 13px;
+  font-family: var(--sans);
 }
 
 .dash-footer {
-  margin-top: 8px;
+  margin-top: 12px;
   padding-top: 14px;
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--rule);
   font-size: 11px;
-  color: var(--text-dim);
+  color: var(--ink-dim);
   display: flex;
   align-items: center;
   gap: 8px;
+  letter-spacing: 0.01em;
 }

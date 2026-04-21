@@ -2,7 +2,7 @@
 
 An end-to-end big-data pipeline and interactive map that helps newcomers evaluate New York City neighborhoods across **safety**, **food quality**, **quality of life (311)**, and **affordability (rent)**.
 
-All heavy lifting — ETL, geocoding, scoring, analytics, Kafka producing/consuming — is **Scala + Apache Spark** and runs on GCP Dataproc. Python survives only as HTTP glue in `data_ingest/`. The UI is a **static bundle** served as plain files: `hyparquet` reads the Spark-written parquet in the browser and Plotly.js / Leaflet render it.
+All heavy lifting — ETL, geocoding, scoring, analytics — is **Scala + Apache Spark** and runs on GCP Dataproc. Python survives only as HTTP glue in `data_ingest/`. The UI is a **static bundle** served as plain files: `hyparquet` reads the Spark-written parquet in the browser and Plotly.js / Leaflet render it.
 
 ## What it does
 
@@ -12,8 +12,7 @@ All heavy lifting — ETL, geocoding, scoring, analytics, Kafka producing/consum
 4. **Aggregates features** per neighborhood: crime totals / rates, restaurant inspection stats, complaint counts, median rent.
 5. **Combines them** into a unified **newcomer score** (z-scored, weighted, 0–100).
 6. **Pre-computes every dashboard aggregate** — summary stats, histograms, top/bottom-10, borough box-plot summaries, a 6×6 correlation matrix, and rent-vs-predictor bins/OLS/points — into small single-file parquet tables under `data/analytics/`.
-7. **Streams** a simulated 311 feed through Kafka → Spark Structured Streaming with 5-minute tumbling windows (both sides Scala).
-8. **Renders** everything in a **backend-free static site**: Leaflet map (`index.html`) and Plotly dashboard (`dashboard.html`) fetch parquet files directly with [hyparquet](https://github.com/hyparam/hyparquet).
+7. **Renders** everything in a **backend-free static site**: Leaflet map (`index.html`) and Plotly dashboard (`dashboard.html`) fetch parquet files directly with [hyparquet](https://github.com/hyparam/hyparquet).
 
 ## Architecture
 
@@ -37,11 +36,6 @@ All heavy lifting — ETL, geocoding, scoring, analytics, Kafka producing/consum
                                     │  etl_code/alexj/Analytics.scala                          
                                     ▼                                                          
                                 data/analytics/*.parquet                                       
-                                                                                               
-                                stream/Producer.scala  ──► Kafka  ──► etl_code/alexj/Consumer.scala
-                                                                         │                     
-                                                                         ▼                     
-                                                                 data/stream/latest.parquet    
 └───────────────────────────────────────────────────────────────────────────────────────────────┘
                                                │
                                                │ gsutil rsync (or publish web/ + data/ to GCS)
@@ -73,14 +67,10 @@ bigdataproject/
     Features.scala               # enriched    -> data/scores/neighborhood_features.parquet
     Score.scala                  # features    -> data/scores/newcomer_score.parquet
     Analytics.scala              # score       -> data/analytics/*.parquet (dashboard tables)
-    Consumer.scala               # Kafka       -> 5-min tumbling windows + latest.parquet
 
   profiling_code/alexj/          # Scala + Spark – exploratory profiling
     FirstCode.scala              # schemas + mean/median/mode + RDD map/reduce
     CountRecs.scala              # row counts + distinct-value surveys
-
-  stream/                        # Scala + Spark – Kafka producer
-    Producer.scala               # enriched 311 -> Kafka topic
 
   web/                           # Static frontend – no backend server
     index.html  map.js           # Leaflet choropleth of newcomer score + raw features
@@ -90,19 +80,17 @@ bigdataproject/
     style.css  dashboard.css
 
   ops/submit_dataproc.sh         # wraps `gcloud dataproc jobs submit spark` per stage
-  kafka/docker-compose.yml       # local dev: single-broker Kafka + Zookeeper
   Makefile                       # one target per stage; `make help`
 
   data/                          # all Spark outputs land here
-    raw/  cleaned/  enriched/  scores/  analytics/  stream/  geo/
+    raw/  cleaned/  enriched/  scores/  analytics/  geo/
 ```
 
 ## Prerequisites
 
 - **Java 11** — required by Spark.
-- **Apache Spark 3.5** — the Scala jobs run via `spark-shell -i`. Install the standalone distribution from <https://spark.apache.org/downloads.html> (or `brew install apache-spark` / `apt install spark`). First run will pull `org.locationtech.jts:jts-core:1.19.0` (for geocoding) and `org.apache.spark:spark-sql-kafka-0-10:3.5.1` (for streaming) via ivy into `~/.ivy2`.
+- **Apache Spark 3.5** — the Scala jobs run via `spark-shell -i`. Install the standalone distribution from <https://spark.apache.org/downloads.html> (or `brew install apache-spark` / `apt install spark`). First run will pull `org.locationtech.jts:jts-core:1.19.0` (for geocoding) via ivy into `~/.ivy2`.
 - **Python 3.11+** — only for `data_ingest/alexj/*.py`; the one dependency is `requests` (see `requirements.txt`).
-- **Docker** — only for the Kafka streaming layer. The batch pipeline doesn't need it.
 - **GCP SDK (`gcloud`)** — only if you want to run the pipeline on Dataproc via `ops/submit_dataproc.sh`.
 
 ## Running the full stack, end-to-end (local)
@@ -143,21 +131,6 @@ make web                 # http://localhost:5173
 
 Open <http://localhost:5173/web/>. The map loads `data/scores/newcomer_score.parquet` directly, builds a GeoJSON against `data/geo/nta.geojson`, and re-styles in-place when you switch metric. Click **Open analytics dashboard** (or go to <http://localhost:5173/web/dashboard.html>) to see the five charts: distribution histogram, top/bottom 10, by-borough box plots, correlation heatmap, and rent-vs-feature trend with an OLS prediction. All figures are built in the browser from the nine parquet aggregates `Analytics.scala` emits.
 
-### Live streaming (3 terminals)
-
-```bash
-# Terminal 1: Kafka via Docker
-make stream-up
-
-# Terminal 2: Spark Structured Streaming consumer (Scala)
-make stream-consume
-
-# Terminal 3: Scala Kafka producer (replays enriched 311 onto topic)
-make stream-produce
-```
-
-Consumer writes 5-minute windows to `data/stream/windowed/` and snapshot counts to `data/stream/latest.parquet`. Shut down with Ctrl-C and `make stream-down`.
-
 ## Running on Dataproc
 
 1. Upload the raw CSVs + geojson to GCS:
@@ -185,7 +158,6 @@ Consumer writes 5-minute windows to `data/stream/windowed/` and snapshot counts 
    export GCS_DATA_ROOT=gs://$BUCKET/data
 
    ops/submit_dataproc.sh pipeline              # clean → geocode → features → score → analytics
-   ops/submit_dataproc.sh stream-consume        # structured streaming on the cluster
    ```
 
 4. Sync the generated parquet back for local dashboarding, or publish `web/` + `data/` to a GCS static site:

@@ -251,11 +251,17 @@ val zipNta = rest
   )
   .filter(col("ZIPCODE") =!= "" && col("nta_code").isNotNull)
 
-val w = Window.partitionBy("ZIPCODE").orderBy(col("n").desc)
+// NB: inline the Window spec instead of binding it to a top-level `val`.
+// spark-shell wraps top-level vals in an `$iw` interpreter class; a later
+// UDF closure that happens to touch anything in `$iw` will capture `$iw`
+// itself, dragging WindowSpec (non-Serializable) along and blowing up with
+// `NotSerializableException: org.apache.spark.sql.expressions.WindowSpec`.
 val modal = zipNta
   .groupBy("ZIPCODE", "nta_code", "nta_name")
   .agg(count(lit(1)).as("n"))
-  .withColumn("rn", row_number().over(w))
+  .withColumn("rn", row_number().over(
+    Window.partitionBy("ZIPCODE").orderBy(col("n").desc)
+  ))
   .filter(col("rn") === 1)
   .select("ZIPCODE", "nta_code", "nta_name")
 

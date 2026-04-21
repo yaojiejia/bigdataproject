@@ -3,8 +3,8 @@
 // ============================================================
 //
 // The pipeline is now API-free: Scala/Spark writes single-file parquet
-// tables into `data/analytics/`, `data/scores/`, and `data/stream/`, and
-// this module fetches them directly over the static HTTP server.
+// tables into `data/analytics/` and `data/scores/`, and this module
+// fetches them directly over the static HTTP server.
 //
 // Everything goes through `loadParquet(url)`, which returns plain JS arrays
 // keyed by column name plus a row-oriented view. BigInts are coerced to

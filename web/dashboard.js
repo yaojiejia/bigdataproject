@@ -145,7 +145,7 @@ document.getElementById("predictor-pills").addEventListener("click", (ev) => {
 // ---- Boot -----------------------------------------------------------------
 
 (async function init() {
-  setStatus("Loading analytics parquet…", "loading");
+  setStatus("Loading…", "loading");
   try {
     const [summary, distribution, topBottom, boroughBox, boroughPoints,
            correlation, rentBins, rentOls, rentPoints] = await Promise.all([
@@ -167,11 +167,12 @@ document.getElementById("predictor-pills").addEventListener("click", (ev) => {
     renderMetricFigures(STATE.metric);
     renderCorrelation();
     renderRentVs(STATE.predictor);
-    setStatus("Dashboard rendered from Scala/Spark parquet.", "ok");
+    const n = Number(summary.rows[0]?.n_ntas || 0);
+    setStatus(`${n} neighborhoods · updated from the latest pipeline run`, "ok");
   } catch (err) {
     console.error(err);
     setStatus(
-      "Couldn't load analytics parquet. Did you run `make analytics`?",
+      "Couldn't load the analytics tables — have you run `make pipeline`?",
       "error"
     );
   }

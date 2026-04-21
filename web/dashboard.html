@@ -3,46 +3,41 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>NYC Neighborhood Insights — Analytics Dashboard</title>
+    <title>The Neighborhood Index — Analytics</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
-    <link rel="stylesheet" href="style.css?v=2" />
-    <link rel="stylesheet" href="dashboard.css?v=2" />
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" />
+    <link rel="stylesheet" href="style.css?v=3" />
+    <link rel="stylesheet" href="dashboard.css?v=3" />
   </head>
   <body class="dashboard-body">
     <header class="dash-header">
-      <div class="dash-brand">
-        <span class="dot"></span>
-        <span>NYC Insights · Analytics</span>
-      </div>
+      <div class="dash-brand">No. 01 &nbsp;·&nbsp; <em>The Neighborhood Index</em> &nbsp;·&nbsp; Analytics</div>
       <nav class="dash-nav">
-        <a href="index.html" class="dash-link">← Back to map</a>
+        <a href="index.html" class="dash-link">&larr; Back to the map</a>
       </nav>
     </header>
 
     <main class="dash-main">
       <section class="dash-intro">
-        <h1>Neighborhood Analytics</h1>
-        <p class="sub">
-          Every chart below is rendered in your browser directly from the
-          parquet tables that <code>etl_code/alexj/Analytics.scala</code>
-          writes under <code>data/analytics/</code>. No backend server, no
-          Python at runtime — just Scala/Spark on the compute side and
-          Plotly.js on the display side. Switch the metric to recompute
-          the first three charts; the correlation matrix is fixed because
-          it describes the six inputs that feed into the Newcomer Score.
+        <h1>The city, <em>measured.</em></h1>
+        <p class="dek">
+          A tour through the five public-data measures that make up the
+          newcomer score, followed by how each one bends the rent. Pick
+          a measure to update the first three charts; the last two look
+          at how the inputs relate to each other and to the housing
+          market.
         </p>
       </section>
 
       <section class="dash-controls">
-        <span class="section-label">Metric</span>
+        <span class="section-label">Measure</span>
         <div class="metric-pills" id="metric-pills">
-          <button data-metric="score" class="active">Newcomer Score</button>
+          <button data-metric="score" class="active">Newcomer score</button>
           <button data-metric="crime">Crime</button>
-          <button data-metric="food">Food Safety</button>
-          <button data-metric="311">Recent 311</button>
+          <button data-metric="food">Food safety</button>
+          <button data-metric="311">311</button>
           <button data-metric="rent">Rent (ZORI)</button>
         </div>
       </section>
@@ -52,23 +47,16 @@
       <section class="chart-grid">
         <div class="chart-card">
           <div class="chart-card-head">
-            <h2>Distribution across NTAs</h2>
-            <p class="chart-hint">
-              How the 256 neighborhoods spread along this metric. Dashed line =
-              mean, dotted line = median.
-            </p>
+            <h2>Distribution across neighborhoods</h2>
+            <p class="chart-hint">How the 262 neighborhoods spread along the selected measure.</p>
           </div>
           <div id="fig-distribution" class="chart-frame"></div>
         </div>
 
         <div class="chart-card">
           <div class="chart-card-head">
-            <h2>Top vs. bottom 10</h2>
-            <p class="chart-hint">
-              The best-ranked and worst-ranked neighborhoods for this metric.
-              "Best" adapts to direction — higher is better for the score,
-              lower is better for crime, rent, complaints, and critical rate.
-            </p>
+            <h2>Best and worst</h2>
+            <p class="chart-hint">Top ten and bottom ten neighborhoods; "best" follows the direction that matters for each measure.</p>
           </div>
           <div id="fig-top-bottom" class="chart-frame"></div>
         </div>
@@ -76,22 +64,15 @@
         <div class="chart-card">
           <div class="chart-card-head">
             <h2>By borough</h2>
-            <p class="chart-hint">
-              Distribution per borough, each dot a neighborhood. Boxes are
-              ordered by median so the ranking is visible at a glance.
-            </p>
+            <p class="chart-hint">Boxes ordered by median, one dot per neighborhood.</p>
           </div>
           <div id="fig-by-borough" class="chart-frame"></div>
         </div>
 
         <div class="chart-card">
           <div class="chart-card-head">
-            <h2>Input correlations</h2>
-            <p class="chart-hint">
-              Pearson correlation between the six raw features that feed the
-              Newcomer Score. Strong positive correlations indicate redundant
-              signal; strong negatives point to genuine trade-offs.
-            </p>
+            <h2>How the inputs correlate</h2>
+            <p class="chart-hint">Pearson correlation among the six signals the newcomer score is built from.</p>
           </div>
           <div id="fig-correlation" class="chart-frame"></div>
         </div>
@@ -100,14 +81,10 @@
           <div class="chart-card-head">
             <div class="chart-card-head-row">
               <div>
-                <h2>Rent vs raw features — trend &amp; prediction</h2>
+                <h2>What the rent follows</h2>
                 <p class="chart-hint">
-                  Pick a predictor. Purple line = median rent per decile bin
-                  of the feature (the headline trend). Shaded band = IQR of
-                  rent inside each bin. Dashed green line = OLS best fit, with
-                  the slope, R², and a plain-English prediction shown in the
-                  top-right annotation. Dots are individual NTAs coloured by
-                  borough.
+                  Median rent against each raw signal. Line is the binned median,
+                  band is the IQR, dashed line is the OLS fit. Dots are neighborhoods.
                 </p>
               </div>
               <div class="predictor-pills" id="predictor-pills">
@@ -125,11 +102,11 @@
 
       <footer class="dash-footer">
         <span class="status-dot loading" id="status-dot"></span>
-        <span id="status">Loading analytics…</span>
+        <span id="status">Loading…</span>
       </footer>
     </main>
 
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
-    <script type="module" src="dashboard.js?v=3"></script>
+    <script type="module" src="dashboard.js?v=4"></script>
   </body>
 </html>

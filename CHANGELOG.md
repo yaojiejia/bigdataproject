@@ -274,4 +274,138 @@ data is neutral (z ≈ 0) rather than catastrophic.
 
 **Caveat:** This is documented in the ethics write-up as a bias: mean
 imputation is quietly generous to NTAs with incomplete data, which tend
-to be lower-income neighborhoods with thinner civic-data coverage.
+to be lower-income neighborhoods with thinner civic-data coverage. The
+next two entries address the two worst failure modes of this policy.
+
+### Score.scala — N/A gate for data-starved NTAs
+
+**Before:** Mean imputation (see previous entry) meant every NTA got a
+finite `newcomer_score`, regardless of how much data was actually behind
+it. For `MN0191` — *The Battery-Governors Island-Ellis Island-Liberty
+Island*, four effectively uninhabited islands grouped into one NTA —
+this was catastrophic: the NTA had no ZORI rent and only 4 restaurant
+inspections with an unrealistically low `avg_score` of 1.25 (food
+carts). Mean-imputed rent + a cartoonishly clean food-safety signal
+pushed its raw `newcomer_score` to the *maximum* in the city, so after
+min-max rescale it got **100.0 / 100** — ranked #1 in NYC.
+
+**Fix:** Added an explicit data-starved gate in `Score.scala`. Any NTA
+with `median_rent_zori IS NULL` **and** `n_inspections < 20` has its
+`newcomer_score` / `newcomer_score_100` nulled out. The `score_available`
+boolean is written alongside so downstream consumers can distinguish
+"unscored" from a genuine low score. Critically, the gate runs
+**before** min-max rescale, so removing the Battery outlier also stops
+its inflated max from squashing everybody else's 0–100 number.
+
+Frontend consequence: `web/map.js` now renders gated NTAs in the neutral
+"rule" colour on the score choropleth, and the detail panel shows an
+italic "N/A" with the note *"Not enough rent or restaurant data to
+score."* instead of a silent empty badge.
+
+**Lesson:** Imputation is a rendering policy, not a truth policy. The
+right move is to keep imputation as the default (so downstream math
+doesn't NaN out) but short-circuit the output for rows where the
+imputation is *the majority of the signal*.
+
+### Features.scala — curated rent overrides for coverage-gap NTAs
+
+**Before:** Zillow's ZORI only covers ZIPs with an active residential
+rental market and a sufficient listing count. Four populous Manhattan
+NTAs — `MN0301 Chinatown-Two Bridges`, `MN0402 Hell's Kitchen`,
+`MN0601 Stuyvesant Town-Peter Cooper Village`, `MN0602 Gramercy` — came
+out as `median_rent_zori = NULL` and got mean-imputed by `Score.scala`.
+They have plenty of restaurant inspections, so the new N/A gate doesn't
+catch them either; they just silently got an "average" rent signal on a
+dimension that carries 30% of the weight. For neighborhoods that are in
+reality some of the most expensive in Manhattan, this understated
+affordability cost by hundreds of dollars a month.
+
+**Fix:** Added a `RENT_OVERRIDES: Map[String, Double]` in
+`Features.scala`, keyed by NTA 2020 code, with curated medians collected
+from contemporary listings aggregators (Zumper / StreetEasy /
+RentCafe):
+
+| NTA code | NTA name                              | Override ($/mo) |
+|----------|---------------------------------------|-----------------|
+| MN0301   | Chinatown-Two Bridges                 | 5,500           |
+| MN0402   | Hell's Kitchen                        | 4,475           |
+| MN0601   | Stuyvesant Town-Peter Cooper Village  | 5,775           |
+| MN0602   | Gramercy                              | 6,300           |
+
+Applied via `coalesce(median_rent_zori, element_at(typedLit(map),
+nta_code))` **after** the ZIP→NTA aggregation, so any observed ZORI
+value always wins. A new `median_rent_imputed` boolean is written
+alongside every row so the provenance is preserved in the parquet.
+
+**Why in `features` and not elsewhere:** `clean` works in ZIP space so
+it doesn't know the NTA yet; `geocode` is still per-ZIP; `score` and
+`analytics` are consumers. `features` is the single stage that emits
+one row per NTA with the final rent value, which makes it the right
+place for an NTA-keyed override. Keeping the override out of `score`
+in particular means any change to the table only re-runs the (cheap)
+feature aggregation, not the full scoring path.
+
+**Lesson:** "Missing data is a signal" (the N/A gate above) and "missing
+data is fillable from elsewhere" are both valid; the distinction is
+whether a human-auditable substitute exists. The override map makes
+that judgment explicit and reviewable in one place.
+
+## Frontend redesign
+
+### web/ — editorial light theme, stripped AI-dashboard flourishes
+
+**Before:** The frontend was a dark slate/indigo dashboard (`#0f172a`
+background, `#818cf8` indigo-400 accent, pulsing status dot, glowing
+brand dot with a `box-shadow` halo, animated-arrow CTA, compass-in-heart
+empty-state icon, glassmorphism sticky header with `backdrop-filter:
+blur(10px)`, intro paragraphs that name-dropped
+`etl_code/alexj/Analytics.scala` and explained the Scala/Spark/Plotly
+stack to the reader). The individual pieces were competent but the sum
+read unmistakably as an LLM-generated "minimal dark dashboard".
+
+**Change:** Full editorial light theme across `web/style.css`,
+`web/dashboard.css`, `web/index.html`, `web/dashboard.html`,
+`web/map.js`, and `web/lib/figures.js`:
+
+- **Palette.** Warm paper `#f6f3ec` background, white `#ffffff` cards,
+  warm near-black `#1a1815` ink (never pure `#000`). One accent, which
+  is simply the ink colour. Data colours are editorial —
+  `#3a5a40` forest for *good*, `#8b3a3a` brick for *bad*, `#b08837`
+  ochre for *warn*. Borough palette swapped from rainbow primaries to
+  navy / forest / ochre / brick / umber.
+- **Typography.** Every headline (sidebar H1, dashboard H1, chart card
+  titles, score badge, summary-card numbers) now uses a *system* serif
+  stack (`Charter, Iowan Old Style, Cambria, Source Serif Pro,
+  Georgia`). Inter stays for body and UI. Deliberately no Google
+  webfont import for display — system serifs feel handcrafted and
+  don't flash-of-unstyled into something generic.
+- **Chrome removed.** Glowing brand dot, pulsing status-dot animation,
+  animated-arrow CTA, compass empty-state SVG, glassmorphism header
+  blur, linear-gradient page background — all deleted. Replaced with
+  plain rules, typographic cues (`No. 01 · New York` masthead eyebrow,
+  em-dash-prefixed empty states), and single-pixel borders.
+- **Copy.** Sidebar H1 `Find your neighborhood` → `The Neighborhood
+  Index.` (italicised "Index.", editorial period). Dashboard intro
+  rewritten to describe *what the reader is looking at* instead of
+  describing the tech stack. Chart hints collapsed to one factual
+  sentence each. Status line is now informational ("262 neighborhoods
+  · updated from the latest pipeline run") instead of a boast
+  ("Dashboard rendered from Scala/Spark parquet.").
+- **Map retheme.** Choropleth ramps swapped: indigo → forest-green
+  sequential for higher-is-better (`newcomer score`); warm earth
+  (cream → umber → burnt sienna) for higher-is-worse metrics. Polygon
+  hover/select stroke matches the new ink. Basemap tiles switched
+  from `light_all` → `light_nolabels` so street labels don't fight
+  with the NTA name tooltip.
+- **Plotly retheme.** White paper backgrounds, warm-gray axes, muted
+  tick labels, ink-on-paper trend lines. Correlation heatmap uses a
+  custom brick → paper → ink-navy scale instead of generic RdBu. IQR
+  band in the rent-vs-feature chart is a 7%-opacity ink tint instead
+  of translucent indigo. Annotation boxes are white-on-white with a
+  1px rule, not semi-transparent slate.
+
+**Lesson:** The single biggest visual signal that something is
+AI-generated is the "minimal dark dashboard with a neon accent"
+template. Flipping to a warm-paper light theme with a serif display
+stack is a one-afternoon change that moves the whole piece out of that
+aesthetic with no information-architecture cost.

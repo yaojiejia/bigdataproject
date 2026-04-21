@@ -4,7 +4,7 @@
 
 This project develops an interactive, data-driven system designed to help newcomers better understand and evaluate neighborhoods in New York City. The system integrates multiple large-scale public datasets — including crime records and restaurant inspection results — to provide a comprehensive view of each neighborhood. The goal is to transform fragmented and complex urban data into clear, accessible insights that allow users to compare areas such as Tribeca, the Lower East Side, or Astoria across multiple dimensions like safety, food quality, and quality of life.
 
-**Runtime surface:** every big-data step (ETL, geocoding, scoring, analytics, Kafka producing/consuming) is written in **Scala + Apache Spark** and is designed to run on a GCP Dataproc cluster via `gcloud dataproc jobs submit spark`. There is no Python backend server; there is no Jupyter notebook. The static frontend reads the Spark-written parquet directly in the browser with [hyparquet](https://github.com/hyparam/hyparquet) and renders charts with Plotly.js.
+**Runtime surface:** every big-data step (ETL, geocoding, scoring, analytics) is written in **Scala + Apache Spark** and is designed to run on a GCP Dataproc cluster via `gcloud dataproc jobs submit spark`. There is no Python backend server; there is no Jupyter notebook. The static frontend reads the Spark-written parquet directly in the browser with [hyparquet](https://github.com/hyparam/hyparquet) and renders charts with Plotly.js.
 
 ## Datasets
 

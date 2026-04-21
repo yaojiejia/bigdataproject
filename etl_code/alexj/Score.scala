@@ -120,7 +120,50 @@ val subscored = scored
       + lit(WEIGHTS("affordability")) * col("affordability_score")
   )
 
-val minmax = subscored.agg(
+// ---- Suppress the score for data-starved NTAs -----------------------------
+//
+// Some NTAs are effectively non-residential (e.g. "The Battery-Governors
+// Island-Ellis Island-Liberty Island" — four uninhabited islands grouped
+// into one NTA) and carry almost no rent or inspection signal. The z-score
+// stage above fills missing values with the column mean, which makes these
+// NTAs look "average" on rent and food-safety. Those two dimensions together
+// carry 0.55 of the weight, so the composite drifts — and in the actual data
+// it's worse than drifting: Battery/Governors/Ellis/Liberty had 4 inspections
+// with an unrealistically low avg_score of 1.25, pushing its raw newcomer
+// score to the max in the city. If we rescaled before gating, that inflated
+// max would squash everybody else's 0-100 number. So the order here is:
+//   1. Decide who is data-starved.
+//   2. Null their `newcomer_score`.
+//   3. Only THEN compute min/max and rescale to 0-100 over the survivors.
+//
+// Gate: no ZORI rent AND fewer than MIN_INSPECTIONS restaurant inspections.
+// The raw features stay in the parquet so the detail panel can still show
+// whatever partial signal we have (crime counts, 311 counts). One-or-the-
+// other missing is still enough to score the NTA.
+
+val MIN_INSPECTIONS = 20L
+val insufficient =
+  col("median_rent_zori").isNull &&
+  (col("n_inspections").isNull || col("n_inspections") < lit(MIN_INSPECTIONS))
+
+val gated = subscored
+  .withColumn("score_available", !insufficient)
+  .withColumn(
+    "newcomer_score",
+    when(col("score_available"), col("newcomer_score")).otherwise(lit(null).cast("double"))
+  )
+
+val nUnscored = gated.filter(!col("score_available")).count()
+if (nUnscored > 0) {
+  println(s"\n[score] $nUnscored NTA(s) marked unscored (no ZORI rent + < $MIN_INSPECTIONS inspections):")
+  gated
+    .filter(!col("score_available"))
+    .select("nta_code", "nta_name", "n_inspections", "median_rent_zori")
+    .show(20, false)
+}
+
+// Min/max rescale over the surviving NTAs only. `min`/`max` ignore nulls.
+val minmax = gated.agg(
   min("newcomer_score").as("lo"),
   max("newcomer_score").as("hi")
 ).first()
@@ -128,10 +171,12 @@ val lo = minmax.getAs[Double]("lo")
 val hi = minmax.getAs[Double]("hi")
 
 val rescaled =
-  if (hi == lo) subscored.withColumn("newcomer_score_100", lit(50.0))
-  else subscored.withColumn(
+  if (hi == lo) gated.withColumn("newcomer_score_100", lit(50.0))
+  else gated.withColumn(
     "newcomer_score_100",
-    lit(100) * (col("newcomer_score") - lit(lo)) / lit(hi - lo)
+    when(col("newcomer_score").isNotNull,
+      lit(100) * (col("newcomer_score") - lit(lo)) / lit(hi - lo)
+    ).otherwise(lit(null).cast("double"))
   )
 
 rescaled.cache()
@@ -140,12 +185,14 @@ rescaled.cache()
 
 println("\nTop 10 NTAs by newcomer_score:")
 rescaled
+  .filter(col("newcomer_score").isNotNull)
   .orderBy(col("newcomer_score").desc)
   .select("nta_code", "nta_name", "newcomer_score", "newcomer_score_100")
   .limit(10).show(false)
 
 println("Bottom 10 NTAs by newcomer_score:")
 rescaled
+  .filter(col("newcomer_score").isNotNull)
   .orderBy(col("newcomer_score").asc)
   .select("nta_code", "nta_name", "newcomer_score", "newcomer_score_100")
   .limit(10).show(false)

@@ -1,17 +1,14 @@
 .PHONY: setup download geo-download \
         clean geocode features score analytics pipeline \
-        stream-up stream-down stream-produce stream-consume \
         profile-first profile-counts \
-        web all help dataproc-submit
+        web all help dataproc-submit \
+        clean-data clean-derived
 
 PYTHON       ?= python3
 PIP          ?= pip3
 DATA_ROOT    ?= $(PWD)/data
 SPARK_SHELL  ?= spark-shell
 SPARK_MASTER ?= local[*]
-
-# Kafka-on-Spark integration (shared by Consumer + Producer).
-KAFKA_PKG    ?= org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1
 
 # JTS for Geocode.scala's point-in-polygon join. ~5 MB jar, pure-Java,
 # resolved via ivy on first run and cached in ~/.ivy2.
@@ -54,12 +51,6 @@ help:
 	@echo "  analytics        - Analytics.scala : pre-aggregated parquet for dashboard"
 	@echo "  pipeline         - clean -> geocode -> features -> score -> analytics"
 	@echo ""
-	@echo "ETL / streaming   (stream/ + etl_code/alexj/ — Scala/Spark):"
-	@echo "  stream-up        - start Kafka via docker-compose"
-	@echo "  stream-down      - stop Kafka"
-	@echo "  stream-produce   - Producer.scala  : replay 311 records onto Kafka"
-	@echo "  stream-consume   - Consumer.scala  : Kafka -> 5-min windows -> parquet"
-	@echo ""
 	@echo "Profiling         (profiling_code/alexj/ — Scala/Spark):"
 	@echo "  profile-first    - FirstCode.scala  : schemas + mean/median/mode + RDD map/reduce"
 	@echo "  profile-counts   - CountRecs.scala  : row counts + distinct-value surveys"
@@ -73,6 +64,8 @@ help:
 	@echo "Meta:"
 	@echo "  setup            - pip install requirements (just 'requests' now)"
 	@echo "  all              - download + geo-download + pipeline"
+	@echo "  clean-derived    - delete pipeline outputs under \$$DATA_ROOT (cleaned/enriched/scores/analytics); keeps raw/ and geo/"
+	@echo "  clean-data       - DESTRUCTIVE: delete EVERYTHING under \$$DATA_ROOT (incl. raw/ and geo/)"
 
 setup:
 	$(PIP) install -r requirements.txt
@@ -104,20 +97,6 @@ analytics:
 
 pipeline: clean geocode features score analytics
 
-# ---- Streaming ------------------------------------------------------------
-
-stream-up:
-	docker compose -f kafka/docker-compose.yml up -d
-
-stream-down:
-	docker compose -f kafka/docker-compose.yml down
-
-stream-produce:
-	DATA_ROOT=$(DATA_ROOT) $(SPARK_SHELL) $(SPARK_OPTS) --packages $(KAFKA_PKG) -i stream/Producer.scala
-
-stream-consume:
-	DATA_ROOT=$(DATA_ROOT) $(SPARK_SHELL) $(SPARK_OPTS) --packages $(KAFKA_PKG) -i etl_code/alexj/Consumer.scala
-
 # ---- Profiling (code lives in profiling_code/alexj/) ----------------------
 # Profiling is exploratory. Run ad-hoc when you want to re-profile a
 # dataset after a schema change; not part of the production pipeline.
@@ -144,3 +123,27 @@ dataproc-submit:
 	bash ops/submit_dataproc.sh $(ARGS)
 
 all: download geo-download pipeline
+
+# ---- Data hygiene ---------------------------------------------------------
+# clean-derived  : wipe only pipeline outputs (cleaned/enriched/scores/analytics).
+#                  Re-run `make pipeline` to rebuild; no re-download needed.
+# clean-data     : wipe EVERYTHING under $(DATA_ROOT), including raw/ + geo/.
+#                  You'll need `make download` + `make geo-download` afterwards.
+#
+# Both targets refuse to run if DATA_ROOT is empty or "/", as a guard against
+# `make clean-data DATA_ROOT=""` doing something catastrophic.
+
+clean-derived:
+	@if [ -z "$(DATA_ROOT)" ] || [ "$(DATA_ROOT)" = "/" ]; then \
+		echo "refusing to delete from empty or root DATA_ROOT='$(DATA_ROOT)'" >&2; exit 1; \
+	fi
+	@echo "removing pipeline outputs under $(DATA_ROOT)"
+	rm -rf -- "$(DATA_ROOT)/cleaned" "$(DATA_ROOT)/enriched" "$(DATA_ROOT)/scores" "$(DATA_ROOT)/analytics"
+
+clean-data:
+	@if [ -z "$(DATA_ROOT)" ] || [ "$(DATA_ROOT)" = "/" ]; then \
+		echo "refusing to delete from empty or root DATA_ROOT='$(DATA_ROOT)'" >&2; exit 1; \
+	fi
+	@echo "removing ALL contents under $(DATA_ROOT) (raw, geo, cleaned, enriched, scores, analytics)"
+	rm -rf -- "$(DATA_ROOT)"
+	mkdir -p -- "$(DATA_ROOT)"

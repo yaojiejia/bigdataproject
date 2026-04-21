@@ -2,18 +2,17 @@
 // web/lib/figures.js — Plotly figure builders for the dashboard.
 // ============================================================
 //
-// Every figure in the dashboard is assembled from pre-aggregated parquet
-// tables written by `etl_code/alexj/Analytics.scala`. No server-side
-// figure generation, no pandas — just column arrays in, Plotly spec out.
+// Every figure is assembled from pre-aggregated parquet tables written
+// by `etl_code/alexj/Analytics.scala`. No server-side figure
+// generation, no pandas — just column arrays in, Plotly spec out.
 //
-// The visual language (palette, typography, borough colours, layout
-// margins) is a direct port of what the previous Python `analytics.py`
-// produced so the dashboard looks identical to the screenshots people
-// have seen before, even though the codepath is now completely
-// different.
+// Visual language: editorial light theme. Ink on warm paper, a muted
+// earthen palette for boroughs, no neon, no gradients. Trace colours
+// for "good" and "bad" directions are forest + brick — deliberately
+// editorial, not dashboard-default red/green.
 //
-// Contract reminder: if you change a column name in Analytics.scala you
-// MUST update the corresponding builder here — there's no middle-tier
+// Contract: if you change a column name in Analytics.scala you MUST
+// update the corresponding builder here — there's no middle-tier
 // schema validator to catch it.
 
 import { filterRows, groupBy, sortBy } from "./parquet.js";
@@ -21,24 +20,30 @@ import { filterRows, groupBy, sortBy } from "./parquet.js";
 // ---- Palette ---------------------------------------------------------------
 
 export const COLORS = {
-  bg:     "#0f172a",
-  panel:  "#1e293b",
-  border: "#334155",
-  text:   "#f1f5f9",
-  muted:  "#94a3b8",
-  accent: "#818cf8",
-  good:   "#34d399",
-  bad:    "#f87171",
-  grid:   "rgba(148,163,184,0.15)",
+  paper:   "#ffffff",          // chart background inside a card
+  ink:     "#1a1815",          // primary text / axis
+  muted:   "#58504a",          // secondary text
+  dim:     "#8b837b",          // tertiary text / tick labels
+  rule:    "#e4ded3",          // borders, axis lines
+  grid:    "rgba(26,24,21,0.08)",
+  // Data directions — used for the single-colour traces (histograms, bars).
+  good:    "#3a5a40",          // forest, for "higher is better"
+  bad:     "#8b3a3a",          // brick, for "higher is worse"
+  // Neutral anchor for median/trend lines.
+  anchor:  "#1a1815",
 };
 
+// Borough colours — warm editorial set, not primary-dashboard palette.
+// Manhattan = ink-blue, Brooklyn = forest, Queens = ochre, Bronx = brick,
+// Staten Island = umber. Deliberately muted so no single borough
+// dominates the eye.
 export const BOROUGH_COLORS = {
-  Manhattan:       "#818cf8",
-  Brooklyn:        "#34d399",
-  Queens:          "#fbbf24",
-  Bronx:           "#f87171",
-  "Staten Island": "#60a5fa",
-  Other:           "#64748b",
+  Manhattan:       "#2c5475",
+  Brooklyn:        "#3a5a40",
+  Queens:          "#b08837",
+  Bronx:           "#8b3a3a",
+  "Staten Island": "#6b4226",
+  Other:           "#8b837b",
 };
 
 // ---- Metric + predictor metadata (mirror Analytics.scala constants) --------
@@ -121,30 +126,41 @@ export const INPUT_FEATURE_LABELS = {
 // ---- Shared layout ---------------------------------------------------------
 
 export function baseLayout(title, height = 420, extra = {}) {
+  // Titles are rendered in the HTML card head now (serif, designed).
+  // We pass `title` through only so existing call sites don't have to
+  // rewire; if a caller still wants it, it's drawn small and muted as
+  // a fallback label.
   const layout = {
     title: {
-      text: title, x: 0, xanchor: "left",
-      font: { size: 15, color: COLORS.text },
+      text: "",
+      x: 0, xanchor: "left",
+      font: { size: 13, color: COLORS.muted, family: "Inter, sans-serif" },
     },
-    paper_bgcolor: COLORS.bg,
-    plot_bgcolor:  COLORS.bg,
-    font: { family: "Inter, -apple-system, sans-serif", color: COLORS.text, size: 12 },
-    margin: { l: 60, r: 20, t: 50, b: 50 },
+    paper_bgcolor: COLORS.paper,
+    plot_bgcolor:  COLORS.paper,
+    font: { family: "Inter, -apple-system, sans-serif", color: COLORS.ink, size: 12 },
+    margin: { l: 60, r: 20, t: 24, b: 50 },
     height,
     xaxis: {
       gridcolor: COLORS.grid, zerolinecolor: COLORS.grid,
-      linecolor: COLORS.border, tickcolor: COLORS.border,
+      linecolor: COLORS.rule, tickcolor: COLORS.rule,
+      tickfont: { color: COLORS.muted, size: 11 },
+      titlefont: { color: COLORS.muted, size: 12 },
     },
     yaxis: {
       gridcolor: COLORS.grid, zerolinecolor: COLORS.grid,
-      linecolor: COLORS.border, tickcolor: COLORS.border,
+      linecolor: COLORS.rule, tickcolor: COLORS.rule,
+      tickfont: { color: COLORS.muted, size: 11 },
+      titlefont: { color: COLORS.muted, size: 12 },
     },
     legend: {
       bgcolor: "rgba(0,0,0,0)",
-      bordercolor: COLORS.border,
-      borderwidth: 1,
+      bordercolor: COLORS.rule,
+      borderwidth: 0,
+      font: { color: COLORS.muted, size: 11 },
     },
   };
+  void title; // now carried by the card head, not the figure
   // Shallow-merge extras so callers can override axis titles, etc.
   for (const k of Object.keys(extra)) {
     if (k === "xaxis" || k === "yaxis" || k === "legend" || k === "title") {
@@ -166,48 +182,48 @@ export function distributionFigure(distRows, summaryRows, metricKey) {
   const width = bins.length >= 2 ? (bins[1].bin_lo - bins[0].bin_lo) : 1;
   const x = bins.map((b) => b.bin_center);
   const y = bins.map((b) => Number(b.count));
-  const barColor = meta.higherIsBetter ? COLORS.accent : COLORS.bad;
+  const barColor = meta.higherIsBetter ? COLORS.good : COLORS.bad;
 
   const trace = {
     type: "bar",
     x, y,
-    marker: { color: barColor, line: { color: COLORS.bg, width: 1 } },
+    marker: { color: barColor, line: { color: COLORS.paper, width: 1 } },
     width: new Array(x.length).fill(width * 0.95),
-    opacity: 0.85,
+    opacity: 0.92,
     name: meta.label,
-    hovertemplate: "<b>%{x}</b><br>%{y} NTAs<extra></extra>",
+    hovertemplate: "<b>%{x}</b><br>%{y} neighborhoods<extra></extra>",
   };
 
   const mean   = summary.mean;
   const median = summary.median;
-  const lineAnn = (val, color, dash, posX, posY, label) => ({
+  const lineAnn = (val, color, dash) => ({
     type: "line",
     xref: "x", yref: "paper",
     x0: val, x1: val, y0: 0, y1: 1,
-    line: { color, width: 2, dash },
+    line: { color, width: 1.25, dash },
   });
   const layout = baseLayout(
-    `Distribution of ${meta.label} across ${Number(summary.n_ntas || 0)} NTAs`,
+    `Distribution of ${meta.label}`,
     420,
     {
       xaxis: { title: meta.label },
-      yaxis: { title: "Number of neighborhoods" },
+      yaxis: { title: "Neighborhoods" },
       bargap: 0.05,
       showlegend: false,
       shapes: [
-        mean != null ? lineAnn(mean, COLORS.accent, "dash") : null,
-        median != null ? lineAnn(median, COLORS.good, "dot") : null,
+        mean != null ? lineAnn(mean, COLORS.anchor, "dash") : null,
+        median != null ? lineAnn(median, COLORS.muted, "dot") : null,
       ].filter(Boolean),
       annotations: [
         mean != null ? {
-          x: mean, y: 1, yref: "paper", xanchor: "left", yanchor: "top",
+          x: mean, y: 1.02, yref: "paper", xanchor: "left", yanchor: "bottom",
           text: `mean ${Number(mean).toFixed(1)}`, showarrow: false,
-          font: { color: COLORS.accent },
+          font: { color: COLORS.anchor, size: 11 },
         } : null,
         median != null ? {
-          x: median, y: 1, yref: "paper", xanchor: "right", yanchor: "top",
+          x: median, y: 1.02, yref: "paper", xanchor: "right", yanchor: "bottom",
           text: `median ${Number(median).toFixed(1)}`, showarrow: false,
-          font: { color: COLORS.good },
+          font: { color: COLORS.muted, size: 11 },
         } : null,
       ].filter(Boolean),
     }
@@ -239,10 +255,10 @@ export function topBottomFigure(topBottomRows, metricKey, n = 10) {
     x: rows.map((r) => r.value),
     y: rows.map((r) => r.nta_name),
     xaxis: axis.x, yaxis: axis.y,
-    marker: { color, line: { color: COLORS.bg, width: 1 } },
+    marker: { color, line: { color: COLORS.paper, width: 1 } },
     text: rows.map((r) => Number(r.value).toLocaleString(undefined, { maximumFractionDigits: 1 })),
     textposition: "outside",
-    textfont: { color: COLORS.text, size: 11 },
+    textfont: { color: COLORS.muted, size: 10.5 },
     hovertemplate: "<b>%{y}</b><br>" + meta.label + ": %{x:,.2f}<extra></extra>",
     showlegend: false,
   });
@@ -254,11 +270,13 @@ export function topBottomFigure(topBottomRows, metricKey, n = 10) {
 
   const axisStyle = {
     gridcolor: COLORS.grid, zerolinecolor: COLORS.grid,
-    linecolor: COLORS.border, tickcolor: COLORS.border,
+    linecolor: COLORS.rule,  tickcolor: COLORS.rule,
+    tickfont:  { color: COLORS.muted, size: 10.5 },
+    titlefont: { color: COLORS.muted, size: 12 },
   };
 
   const layout = baseLayout(
-    `${meta.label} — top vs. bottom ${n} NTAs`,
+    `${meta.label} — best vs. worst`,
     Math.max(380, 40 + n * 28),
     {
       grid: { rows: 1, columns: 2, pattern: "independent" },
@@ -267,10 +285,10 @@ export function topBottomFigure(topBottomRows, metricKey, n = 10) {
       yaxis:  Object.assign({ automargin: true, anchor: "x"  }, axisStyle),
       yaxis2: Object.assign({ automargin: true, anchor: "x2" }, axisStyle),
       annotations: [
-        { x: 0.22, y: 1.06, xref: "paper", yref: "paper", showarrow: false,
-          text: `Top ${n} (best)`, font: { color: COLORS.muted, size: 12 } },
-        { x: 0.78, y: 1.06, xref: "paper", yref: "paper", showarrow: false,
-          text: `Bottom ${n} (worst)`, font: { color: COLORS.muted, size: 12 } },
+        { x: 0.22, y: 1.04, xref: "paper", yref: "paper", showarrow: false,
+          text: `Best ${n}`, font: { color: COLORS.muted, size: 11 } },
+        { x: 0.78, y: 1.04, xref: "paper", yref: "paper", showarrow: false,
+          text: `Worst ${n}`, font: { color: COLORS.muted, size: 11 } },
       ],
     }
   );
@@ -299,10 +317,10 @@ export function byBoroughFigure(boxRows, pointRows, metricKey) {
     x: [b.borough],
     q1: [b.q1], median: [b.median], q3: [b.q3],
     lowerfence: [b.lowerfence], upperfence: [b.upperfence],
-    marker: { color: BOROUGH_COLORS[b.borough] || COLORS.accent },
-    line:   { color: BOROUGH_COLORS[b.borough] || COLORS.accent, width: 1.5 },
-    fillcolor: BOROUGH_COLORS[b.borough] || COLORS.accent,
-    opacity: 0.35,
+    marker: { color: BOROUGH_COLORS[b.borough] || COLORS.anchor },
+    line:   { color: BOROUGH_COLORS[b.borough] || COLORS.anchor, width: 1.25 },
+    fillcolor: BOROUGH_COLORS[b.borough] || COLORS.anchor,
+    opacity: 0.18,
     boxpoints: false,
     showlegend: false,
     hovertemplate:
@@ -322,18 +340,13 @@ export function byBoroughFigure(boxRows, pointRows, metricKey) {
     scatterTraces.push({
       type: "scatter",
       mode: "markers",
-      x: rows.map((r, i) => {
-        // Plotly categorical x can take the borough string directly; it
-        // renders the marker on that category band. Jitter is applied by
-        // nudging the x index slightly via a secondary numeric axis.
-        return borough;
-      }),
+      x: rows.map(() => borough),
       y: rows.map((r) => r.value),
       text: rows.map((r) => r.nta_name),
       marker: {
-        color: BOROUGH_COLORS[borough] || COLORS.accent,
-        size: 5, opacity: 0.75,
-        line: { color: COLORS.bg, width: 0.5 },
+        color: BOROUGH_COLORS[borough] || COLORS.anchor,
+        size: 5, opacity: 0.8,
+        line: { color: COLORS.paper, width: 0.5 },
       },
       showlegend: false,
       hovertemplate: "<b>%{text}</b><br>" + meta.label + ": %{y:,.2f}<extra>" + borough + "</extra>",
@@ -369,22 +382,37 @@ export function correlationFigure(corrRows, featureList) {
   }
   const text = z.map((row) => row.map((v) => v == null ? "" : (v >= 0 ? "+" : "") + Number(v).toFixed(2)));
 
+  // Custom RdBu-ish scale tuned to the warm paper background. Endpoints
+  // are our editorial brick (-1) and ink-navy (+1); mid-point is the
+  // paper tint itself so that r ≈ 0 cells disappear into the card.
+  const colorscale = [
+    [0.00, "#8b3a3a"],
+    [0.25, "#c2876f"],
+    [0.50, "#f4ebdc"],
+    [0.75, "#6b8aa6"],
+    [1.00, "#2c5475"],
+  ];
+
   const trace = {
     type: "heatmap",
     z, x: labels, y: labels,
     zmin: -1, zmax: 1,
-    colorscale: "RdBu", reversescale: true,
+    colorscale,
     text, texttemplate: "%{text}",
-    textfont: { color: COLORS.text, size: 11 },
+    textfont: { color: COLORS.ink, size: 11 },
     hovertemplate: "%{y} ↔ %{x}<br>r = %{z:.2f}<extra></extra>",
+    xgap: 2, ygap: 2,
     colorbar: {
-      title: { text: "Pearson r", side: "right" },
-      tickcolor: COLORS.border,
-      outlinecolor: COLORS.border,
+      title: { text: "Pearson r", side: "right", font: { color: COLORS.muted, size: 11 } },
+      tickcolor:    COLORS.rule,
+      outlinecolor: COLORS.rule,
+      tickfont:     { color: COLORS.muted, size: 10.5 },
+      thickness: 12,
+      len: 0.7,
     },
   };
   const layout = baseLayout(
-    "Correlation of the six Newcomer Score inputs",
+    "Correlations among the score's inputs",
     460,
     {
       xaxis: { side: "bottom", tickangle: -25 },
@@ -419,9 +447,9 @@ export function rentVsFeatureFigure(binRows, olsRows, pointRows, feature) {
       y: rows.map((r) => r.y),
       text: rows.map((r) => r.nta_name),
       marker: {
-        color: BOROUGH_COLORS[borough] || COLORS.accent,
-        size: 6, opacity: 0.45,
-        line: { color: COLORS.bg, width: 0.5 },
+        color: BOROUGH_COLORS[borough] || COLORS.anchor,
+        size: 6, opacity: 0.55,
+        line: { color: COLORS.paper, width: 0.5 },
       },
       hovertemplate:
         "<b>%{text}</b><br>" +
@@ -431,28 +459,28 @@ export function rentVsFeatureFigure(binRows, olsRows, pointRows, feature) {
     });
   }
 
-  // IQR fill band.
+  // IQR fill band — subtle ink tint, not a coloured accent.
   if (xBin.length) {
     traces.push({
       type: "scatter",
-      name: "IQR band (25th-75th)",
+      name: "IQR of rent",
       x: [...xBin, ...xBin.slice().reverse()],
       y: [...yQ3, ...yQ1.slice().reverse()],
       fill: "toself",
-      fillcolor: "rgba(129,140,248,0.18)",
+      fillcolor: "rgba(26,24,21,0.07)",
       line: { color: "rgba(0,0,0,0)" },
       hoverinfo: "skip",
       showlegend: true,
     });
   }
 
-  // Binned median — headline trend.
+  // Binned median — headline trend. Ink on paper, single confident stroke.
   traces.push({
     type: "scatter", mode: "lines+markers",
-    name: "Binned median rent",
+    name: "Median rent per bin",
     x: xBin, y: yBin,
-    line:   { color: COLORS.accent, width: 3 },
-    marker: { size: 8, color: COLORS.accent, line: { color: COLORS.bg, width: 1.5 } },
+    line:   { color: COLORS.anchor, width: 2 },
+    marker: { size: 6, color: COLORS.anchor, line: { color: COLORS.paper, width: 1 } },
     customdata: bins.map((b) => [Number(b.n_ntas), b.rent_q1, b.rent_q3]),
     hovertemplate:
       `<b>bin median ${meta.short}</b>: %{x}` +
@@ -473,7 +501,7 @@ export function rentVsFeatureFigure(binRows, olsRows, pointRows, feature) {
       type: "scatter", mode: "lines",
       name: `OLS fit (R² = ${Number(ols.r2 || 0).toFixed(2)})`,
       x: xFit, y: yFit,
-      line: { color: COLORS.good, width: 2, dash: "dash" },
+      line: { color: COLORS.bad, width: 1.5, dash: "dash" },
       hovertemplate:
         meta.short + ": %{x}" +
         "<br>predicted rent: $%{y:,.0f}<extra>OLS fit</extra>",
@@ -483,27 +511,27 @@ export function rentVsFeatureFigure(binRows, olsRows, pointRows, feature) {
     const r   = Number(ols.pearson_r || 0);
     const r2  = Number(ols.r2 || 0);
     const slopeLine = `Δrent ≈ <b>$${(slope >= 0 ? "+" : "") + Math.round(slope).toLocaleString()}</b> per unit ${meta.short}`;
-    const predLine  = `At ${meta.short} = ${meta.fmt(xEx)}, model predicts <b>$${Math.max(0, Math.round(yEx)).toLocaleString()}/mo</b>`;
-    const r2Line    = `Pearson r = ${(r >= 0 ? "+" : "") + r.toFixed(2)}, R² = ${r2.toFixed(2)}`;
+    const predLine  = `At ${meta.short} = ${meta.fmt(xEx)}, fit predicts <b>$${Math.max(0, Math.round(yEx)).toLocaleString()}/mo</b>`;
+    const r2Line    = `r = ${(r >= 0 ? "+" : "") + r.toFixed(2)},   R² = ${r2.toFixed(2)}`;
     annotationText  = [slopeLine, predLine, r2Line].join("<br>");
   }
 
   const layout = baseLayout(
-    `Median rent vs ${meta.short} — ${pts.length} NTAs`,
+    `Median rent vs ${meta.short}`,
     460,
     {
       xaxis: { title: meta.label },
-      yaxis: { title: "Median rent (ZORI, $/month)" },
+      yaxis: { title: "Median rent ($/month)" },
       legend: { orientation: "h", y: -0.18, x: 0 },
       annotations: annotationText
         ? [{
             xref: "paper", yref: "paper", x: 0.99, y: 0.99,
             xanchor: "right", yanchor: "top",
             text: annotationText, showarrow: false, align: "right",
-            bgcolor: "rgba(15,23,42,0.85)",
-            bordercolor: COLORS.border, borderwidth: 1,
-            borderpad: 8,
-            font: { color: COLORS.text, size: 11 },
+            bgcolor: "rgba(255,255,255,0.92)",
+            bordercolor: COLORS.rule, borderwidth: 1,
+            borderpad: 10,
+            font: { color: COLORS.ink, size: 11 },
           }]
         : [],
     }
