@@ -251,7 +251,6 @@ modal.coalesce(1)
   .option("header", "true")
   .csv(zipToNta + ".tmp_dir")
 
-.
 def hoistSinglePart(srcDir: String, dstFile: String, ext: String): Unit = {
   val fs  = new HPath(srcDir).getFileSystem(spark.sparkContext.hadoopConfiguration)
   val dir = new HPath(srcDir)
