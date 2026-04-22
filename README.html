@@ -1,0 +1,1448 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>NYC Neighborhood Insights</title>
+  <style>
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      background-color: #1a1a1a;
+      border: none;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+    /* CSS for syntax highlighting */
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">NYC Neighborhood Insights</h1>
+</header>
+<h1 id="nyc-neighborhood-insights">NYC Neighborhood Insights</h1>
+<p>An end-to-end big-data pipeline and interactive site that helps
+newcomers evaluate NYC neighborhoods across <strong>safety</strong>,
+<strong>food quality</strong>, <strong>quality of life (311)</strong>,
+and <strong>affordability (rent)</strong>.</p>
+<p>Every computational stage is <strong>Scala + Apache Spark</strong>.
+Python survives only as HTTP glue in <code>data_ingest/</code>. The UI
+is a <strong>static bundle</strong>: <code>hyparquet</code> reads
+Spark-written parquet in the browser and Plotly.js / Leaflet render it.
+No backend.</p>
+<h2 id="what-it-does">What it does</h2>
+<ol type="1">
+<li><strong>Ingests</strong> four public datasets: NYPD crime
+complaints, DOHMH restaurant inspections, 311 food-safety complaints,
+and Zillow ZORI rent. (Python + <code>requests</code> only.)</li>
+<li><strong>Cleans</strong> with Scala/Spark: upper/trim text keys, drop
+null joins/coords, derive <code>IS_FELONY</code> /
+<code>IS_CRITICAL</code>, melt Zillow wide-to-long via
+<code>stack(n, ...)</code> and a <code>row_number()</code> window to
+keep latest non-null month per ZIP.</li>
+<li><strong>Normalizes geography</strong> by spatially joining each
+point record to a 2020 NYC Neighborhood Tabulation Area (NTA, ~260
+polygons) with a <strong>JTS point-in-polygon</strong> broadcast UDF in
+Spark.</li>
+<li><strong>Aggregates per-NTA features</strong>: crime totals / felony
+share, inspection counts + avg score + critical rate, 311 complaint
+counts, median ZORI rent, plus per-1k intensity if population is
+provided.</li>
+<li><strong>Scores</strong> each NTA via a weighted z-score (safety
+0.30, food_safety 0.25, cleanliness 0.15, affordability 0.30, rescaled
+to 0 to 100).</li>
+<li><strong>Pre-computes dashboard aggregates</strong> (nine tiny
+single-file parquet tables) so the browser does zero math.</li>
+<li><strong>Renders</strong> a Leaflet choropleth
+(<code>index.html</code>) and Plotly dashboard
+(<code>dashboard.html</code>) that fetch parquet directly.</li>
+</ol>
+<h2 id="design-goals">Design goals</h2>
+<ol type="1">
+<li><strong>One language for big-data work.</strong> Every
+data-processing stage is Scala + Spark. No pandas / geopandas / pyarrow
+anywhere.</li>
+<li><strong>Composable, not monolithic.</strong> Each stage reads
+Parquet and writes Parquet; any stage can be re-run in isolation.</li>
+<li><strong>Comparable neighborhoods.</strong> Every signal is
+aggregated to the same geographic unit (2020 NTAs).</li>
+<li><strong>No backend.</strong> The frontend reads parquet over HTTP
+via hyparquet.</li>
+<li><strong>Runnable on one laptop.</strong> No cloud required for dev
+or demo.</li>
+</ol>
+<h2 id="architecture">Architecture</h2>
+<pre><code>Python ingestion
+data_ingest/alexj/*.py   .&gt;   data/raw/
+                               |  etl_code/alexj/Clean.scala
+                               v
+                           data/cleaned/
+                               |  etl_code/alexj/Geocode.scala   (JTS broadcast UDF)
+                               v
+                           data/enriched/                        (every row has nta_code)
+                               |  etl_code/alexj/Features.scala
+                               v
+                           data/scores/neighborhood_features.parquet
+                               |  etl_code/alexj/Score.scala
+                               v
+                           data/scores/newcomer_score.parquet    (single file)
+                               |  etl_code/alexj/Analytics.scala
+                               v
+                           data/analytics/*.parquet              (9 tables)
+                               |
+                               v
+                  Static frontend (web/, no backend)
+                  hyparquet .&gt; parquet ; Plotly.js + Leaflet .&gt; figures</code></pre>
+<p><strong>Language split:</strong> Scala/Spark for every computational
+stage; Python only in <code>data_ingest/</code> for HTTP; plain JS +
+Plotly + Leaflet for display. If a file is <code>.scala</code>, it is
+the canonical implementation of that stage.</p>
+<h2 id="project-layout">Project layout</h2>
+<p>Three top-level category directories, <code>/data_ingest</code>,
+<code>/etl_code</code>, <code>/profiling_code</code>, each with a
+per-member subdirectory.</p>
+<pre><code>bigdataproject/
+  data_ingest/alexj/             # Python, HTTP ingestion only
+    download.py                  # 4 raw CSVs from NYC Open Data + Zillow
+    geo_download.py              # NTA GeoJSON + population template
+    paths.py                     # self-contained path module
+
+  etl_code/alexj/                # Scala + Spark
+    Clean.scala                  # raw CSV   .&gt; data/cleaned/*.parquet
+    Geocode.scala                # cleaned   .&gt; data/enriched/*.parquet  (JTS PIP)
+    Features.scala               # enriched  .&gt; data/scores/neighborhood_features.parquet
+    Score.scala                  # features  .&gt; data/scores/newcomer_score.parquet
+    Analytics.scala              # score     .&gt; data/analytics/*.parquet
+
+  profiling_code/alexj/          # Scala + Spark, exploratory profiling
+    FirstCode.scala              # schemas + mean/median/mode + RDD map/reduce
+    CountRecs.scala              # row counts + distinct-value surveys
+
+  web/                           # Static frontend, no server
+    index.html  map.js           # Leaflet choropleth
+    dashboard.html  dashboard.js # Plotly dashboard
+    lib/parquet.js               # hyparquet wrapper
+    lib/figures.js               # Plotly figure builders
+    style.css  dashboard.css
+
+  Makefile                       # one target per stage; `make help`
+  data/                          # raw/ cleaned/ enriched/ scores/ analytics/ geo/</code></pre>
+<h2 id="data-sources">Data sources</h2>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Dataset</th>
+<th>Source</th>
+<th>ID</th>
+<th>Access</th>
+<th>Rows</th>
+<th>Size</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>NYPD Complaints (YTD)</td>
+<td>NYC Open Data</td>
+<td><code>5uac-w243</code></td>
+<td>Bulk CSV</td>
+<td>~580k</td>
+<td>~204 MB</td>
+</tr>
+<tr class="even">
+<td>Restaurant Inspections</td>
+<td>NYC Open Data</td>
+<td><code>43nn-pn8j</code></td>
+<td>Bulk CSV</td>
+<td>~296k</td>
+<td>~138 MB</td>
+</tr>
+<tr class="odd">
+<td>311 Service Requests (food subset)</td>
+<td>NYC Open Data</td>
+<td><code>erm2-nwe9</code></td>
+<td>Socrata <code>$where</code> (food-only server-side)</td>
+<td>~325k</td>
+<td>~227 MB</td>
+</tr>
+<tr class="even">
+<td>ZORI rent index (ZIP)</td>
+<td>Zillow Research</td>
+<td><code>Zip_zori_uc_sfrcondomfr_sm_month.csv</code></td>
+<td>Static CSV</td>
+<td>~8k (wide, ~430 NYC ZIPs after filter)</td>
+<td>~9 MB</td>
+</tr>
+<tr class="odd">
+<td>NTA 2020 polygons</td>
+<td>NYC Open Data</td>
+<td><code>9nt8-h7nd</code></td>
+<td>GeoJSON</td>
+<td>~260 polygons</td>
+<td>~4.6 MB</td>
+</tr>
+</tbody>
+</table>
+<h2 id="components">Components</h2>
+<h3 id="ingestion-data_ingestalexj">1. Ingestion
+(<code>data_ingest/alexj/</code>)</h3>
+<p><code>download.py</code> pulls the four CSVs;
+<code>geo_download.py</code> pulls the NTA GeoJSON and templates a
+population CSV. Only a food-safety subset of 311
+(<code>Food Poisoning</code>, <code>Food Establishment</code>,
+<code>Rodent</code>, <code>Unsanitary Animal Pvt Property</code>) is
+requested via Socrata <code>$where</code> to keep the file manageable.
+Standard library + <code>requests</code> only.</p>
+<h3 id="clean-clean.scala">2. Clean (<code>Clean.scala</code>)</h3>
+<p>Per-dataset transformations:</p>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Dataset</th>
+<th>Columns kept</th>
+<th>Null-drop keys</th>
+<th>Normalization</th>
+<th>Derived</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Crime</td>
+<td><code>CMPLNT_NUM</code>, <code>CMPLNT_FR_DT</code>,
+<code>OFNS_DESC</code>, <code>LAW_CAT_CD</code>, <code>BORO_NM</code>,
+<code>Latitude</code>, <code>Longitude</code></td>
+<td>all keys + coords</td>
+<td><code>UPPER(TRIM)</code> on <code>BORO_NM</code>,
+<code>OFNS_DESC</code>, <code>LAW_CAT_CD</code></td>
+<td><code>IS_FELONY = LAW_CAT_CD == "FELONY"</code></td>
+</tr>
+<tr class="even">
+<td>Restaurants</td>
+<td><code>CAMIS</code>, <code>DBA</code>, <code>BORO</code>,
+<code>ZIPCODE</code>, <code>CUISINE</code>,
+<code>INSPECTION_DATE</code>, <code>SCORE</code>, <code>GRADE</code>,
+<code>Latitude</code>, <code>Longitude</code></td>
+<td><code>BORO</code>, <code>SCORE</code>, coords</td>
+<td><code>UPPER(TRIM)</code> on <code>BORO</code>, <code>DBA</code>,
+<code>CUISINE</code>, <code>GRADE</code></td>
+<td><code>IS_CRITICAL = SCORE &gt;= 28</code></td>
+</tr>
+<tr class="odd">
+<td>311 food</td>
+<td><code>COMPLAINT_ID</code>, <code>CREATED_DATE</code>,
+<code>COMPLAINT_TYPE</code>, <code>DESCRIPTOR</code>,
+<code>ZIPCODE</code>, <code>BORO</code>, <code>Latitude</code>,
+<code>Longitude</code></td>
+<td><code>COMPLAINT_TYPE</code>, coords</td>
+<td><code>UPPER(TRIM)</code> on <code>BORO</code>,
+<code>COMPLAINT_TYPE</code></td>
+<td>.</td>
+</tr>
+<tr class="even">
+<td>Zillow rent</td>
+<td><code>ZIPCODE</code>, <code>City</code>, <code>State</code>,
+<code>Metro</code>, <code>month</code>, <code>ZORI</code></td>
+<td><code>ZORI</code> post-melt</td>
+<td>wide .&gt; long via <code>stack(n, ...)</code>;
+<code>row_number()</code> keeps latest non-null month per ZIP</td>
+<td>.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Output:</strong>
+<code>data/cleaned/{crime, restaurants, complaints311, rent}/*.parquet</code>.</p>
+<h4 id="crime-key-columns">Crime key columns</h4>
+<table>
+<thead>
+<tr class="header">
+<th>Column</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>CMPLNT_NUM</code></td>
+<td>Unique complaint identifier</td>
+</tr>
+<tr class="even">
+<td><code>CMPLNT_FR_DT</code></td>
+<td>Date the crime began</td>
+</tr>
+<tr class="odd">
+<td><code>OFNS_DESC</code></td>
+<td>Offense description (e.g. ROBBERY, FELONY ASSAULT)</td>
+</tr>
+<tr class="even">
+<td><code>LAW_CAT_CD</code></td>
+<td>FELONY / MISDEMEANOR / VIOLATION</td>
+</tr>
+<tr class="odd">
+<td><code>BORO_NM</code></td>
+<td>Borough name</td>
+</tr>
+<tr class="even">
+<td><code>Latitude</code> / <code>Longitude</code></td>
+<td>Geographic coordinates</td>
+</tr>
+</tbody>
+</table>
+<h4 id="restaurant-key-columns">Restaurant key columns</h4>
+<table>
+<thead>
+<tr class="header">
+<th>Column</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>CAMIS</code></td>
+<td>Unique restaurant identifier</td>
+</tr>
+<tr class="even">
+<td><code>DBA</code></td>
+<td>Business name</td>
+</tr>
+<tr class="odd">
+<td><code>BORO</code></td>
+<td>Borough code</td>
+</tr>
+<tr class="even">
+<td><code>ZIPCODE</code></td>
+<td>ZIP code</td>
+</tr>
+<tr class="odd">
+<td><code>CUISINE</code></td>
+<td>Cuisine type</td>
+</tr>
+<tr class="even">
+<td><code>INSPECTION_DATE</code></td>
+<td>Date of inspection</td>
+</tr>
+<tr class="odd">
+<td><code>SCORE</code></td>
+<td>Numeric inspection score (lower is better)</td>
+</tr>
+<tr class="even">
+<td><code>GRADE</code></td>
+<td>Letter grade (A / B / C)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="geocode-geocode.scala">3. Geocode
+(<code>Geocode.scala</code>)</h3>
+<p>Attaches <code>nta_code</code> + <code>nta_name</code> to every row
+of the three point datasets.</p>
+<ol type="1">
+<li>Driver reads NTA GeoJSON via <code>Hadoop FileSystem</code> (works
+local or HDFS).</li>
+<li>Jackson parses it into ~260
+<code>org.locationtech.jts.geom.Geometry</code> values (Polygon +
+MultiPolygon).</li>
+<li><code>sparkContext.broadcast(Array[NtaPolygon])</code> ships the
+array to executors once.</li>
+<li>A Spark UDF does envelope pre-filter then
+<code>Geometry.contains</code>, returning
+<code>NtaHit(nta_code, nta_name)</code> as a typed struct.</li>
+<li>A ZIP .&gt; NTA lookup is derived from the enriched restaurants data
+(each ZIP assigned the NTA containing the plurality of its restaurants)
+and broadcast-joined onto rent.</li>
+</ol>
+<p>Complexity is O(n * m) worst case but the envelope pre-filter brings
+it near O(n * log m) on NYC geometry. If point or polygon volumes grow
+10x, swap the UDF body for Sedona; everything else is unchanged. Also
+sets <code>spark.sql.legacy.parquet.nanosAsLong=true</code> for INT64
+nanosecond timestamps.</p>
+<h3 id="features-features.scala">4. Features
+(<code>Features.scala</code>)</h3>
+<p>Groups each enriched table by <code>nta_code</code> and emits one row
+per NTA:</p>
+<ul>
+<li><code>total_crimes</code>, <code>felonies</code>,
+<code>felony_share</code></li>
+<li><code>n_inspections</code>, <code>avg_score</code>,
+<code>critical_rate</code></li>
+<li><code>n_complaints</code></li>
+<li><code>median_rent_zori</code></li>
+<li><code>crimes_per_1k</code>, <code>complaints_per_1k</code> (if
+<code>nta_population.csv</code> is populated)</li>
+</ul>
+<p>All four feature tables outer-joined on
+<code>(nta_code, nta_name)</code>. Structural nulls filled with zero;
+rent nulls left null (genuinely “no observations”). Output:
+<code>data/scores/neighborhood_features.parquet</code>.</p>
+<h3 id="score-score.scala">5. Score (<code>Score.scala</code>)</h3>
+<p><strong>Input features (per NTA), all “higher is worse”:</strong></p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Feature</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>crimes_per_1k</code></td>
+<td>NYPD complaints / NTA population</td>
+</tr>
+<tr class="even">
+<td><code>felony_share</code></td>
+<td>share of crimes with <code>LAW_CAT_CD == FELONY</code></td>
+</tr>
+<tr class="odd">
+<td><code>avg_score</code></td>
+<td>mean DOHMH inspection score (lower = cleaner kitchens)</td>
+</tr>
+<tr class="even">
+<td><code>critical_rate</code></td>
+<td>share of inspections with <code>IS_CRITICAL</code>
+(<code>SCORE &gt;= 28</code>)</td>
+</tr>
+<tr class="odd">
+<td><code>complaints_per_1k</code></td>
+<td>311 food-safety complaints / NTA population</td>
+</tr>
+<tr class="even">
+<td><code>median_rent_zori</code></td>
+<td>Zillow ZORI most-recent-month median rent</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Method:</strong></p>
+<ol type="1">
+<li>Z-score each feature with <code>avg</code> + <code>stddev_pop</code>
+in a single <code>groupBy().agg(...)</code>. Nulls imputed with the
+column mean before z-scoring so a missing signal stays neutral (z
+approximate to 0).</li>
+<li>Sign-flip all six features (higher is worse). After this step a
+positive z means “good for a newcomer.”</li>
+<li>Collapse into four sub-scores:
+<ul>
+<li><code>safety</code> = mean(<code>z_crimes_per_1k</code>,
+<code>z_felony_share</code>)</li>
+<li><code>food_safety</code> = mean(<code>z_avg_score</code>,
+<code>z_critical_rate</code>)</li>
+<li><code>cleanliness</code> = <code>z_complaints_per_1k</code></li>
+<li><code>affordability</code> = <code>z_median_rent_zori</code></li>
+</ul></li>
+<li>Weighted sum:
+<code>0.30 * safety + 0.25 * food_safety + 0.15 * cleanliness + 0.30 * affordability</code>
+(weights at the top of <code>Score.scala</code>).</li>
+<li>Rescale linearly to 0 to 100 via min-max.</li>
+</ol>
+<p>Written as <strong>single-file parquet</strong>
+(<code>.coalesce(1)</code> then rename the lone part file) so the
+frontend can fetch a predictable URL.</p>
+<p>The score is <strong>relative, not absolute</strong>. A 0/100 does
+not mean “unlivable”; it means worst-scoring of the ~260 NTAs given
+these six signals and these weights. Tune by editing
+<code>WEIGHTS</code> and rerunning <code>make score</code>.</p>
+<h3 id="analytics-analytics.scala">6. Analytics
+(<code>Analytics.scala</code>)</h3>
+<p>One Spark job emits nine tiny single-file parquet tables under
+<code>data/analytics/</code>:</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>File</th>
+<th>Shape</th>
+<th>Consumer figure</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>summary.parquet</code></td>
+<td>mean/median/min/max/std/n per metric</td>
+<td>summary strip + histogram vlines</td>
+</tr>
+<tr class="even">
+<td><code>distribution.parquet</code></td>
+<td>24 equal-width bins per metric</td>
+<td>histogram</td>
+</tr>
+<tr class="odd">
+<td><code>top_bottom.parquet</code></td>
+<td>top/bottom 10 per metric</td>
+<td>horizontal bar</td>
+</tr>
+<tr class="even">
+<td><code>borough_box.parquet</code></td>
+<td>q1/median/q3/fences per (metric, borough)</td>
+<td>box plot</td>
+</tr>
+<tr class="odd">
+<td><code>borough_points.parquet</code></td>
+<td>raw (metric, borough, nta_name, value)</td>
+<td>jitter overlay</td>
+</tr>
+<tr class="even">
+<td><code>correlation.parquet</code></td>
+<td>long-form (feature_row, feature_col, r)</td>
+<td>6x6 heatmap</td>
+</tr>
+<tr class="odd">
+<td><code>rent_vs_feature_bins.parquet</code></td>
+<td>decile bins x 5 predictors: median + IQR</td>
+<td>trend line + band</td>
+</tr>
+<tr class="even">
+<td><code>rent_vs_feature_ols.parquet</code></td>
+<td>slope, intercept, Pearson r, R^2, example prediction</td>
+<td>OLS line + annotation</td>
+</tr>
+<tr class="odd">
+<td><code>rent_vs_feature_points.parquet</code></td>
+<td>raw (x, rent) per NTA per predictor</td>
+<td>borough-coloured scatter</td>
+</tr>
+</tbody>
+</table>
+<p>Uses <code>percentile_approx</code> for quantiles,
+<code>ntile(10)</code> for rent deciles, Spark’s <code>corr</code>
+aggregate for all 36 heatmap cells in one pass. OLS slope/intercept
+derived analytically from <code>corr</code>, <code>avg</code>,
+<code>stddev_pop</code>, so no Spark ML dependency.
+<code>.cache()</code> the joined input so the scan happens once across
+nine outputs.</p>
+<h3 id="profiling-profiling_codealexj">7. Profiling
+(<code>profiling_code/alexj/</code>)</h3>
+<p><code>FirstCode.scala</code> (schemas, mean/median/mode, RDD
+map/reduce) and <code>CountRecs.scala</code> (row counts, distinct-value
+surveys) answer the “what’s in this data?” questions that precede
+writing ETL.</p>
+<h3 id="frontend-web">8. Frontend (<code>web/</code>)</h3>
+<ul>
+<li><code>lib/parquet.js</code> wraps <a
+href="https://github.com/hyparam/hyparquet">hyparquet</a> with
+<code>loadParquet(url)</code> returning <code>{rows, columns}</code>
+(BigInts coerced to numbers because Plotly cannot handle BigInt).</li>
+<li><code>lib/figures.js</code> owns palette, borough colours, layout
+defaults, and five figure builders (<code>distributionFigure</code>,
+<code>topBottomFigure</code>, <code>byBoroughFigure</code>,
+<code>correlationFigure</code>, <code>rentVsFeatureFigure</code>).</li>
+<li><code>map.js</code> fetches the NTA GeoJSON and
+<code>data/scores/newcomer_score.parquet</code>, joins on
+<code>nta_code</code> client-side, hands the merged FeatureCollection to
+Leaflet. Metric switching is pure in-place restyling.</li>
+<li><code>dashboard.js</code> loads all nine analytics parquets in
+parallel at startup, then re-runs figure builders against cached data on
+pill clicks.</li>
+</ul>
+<p>A schema change in <code>Analytics.scala</code> needs a matching
+change in <code>web/lib/figures.js</code>; this is called out in both
+files’ headers.</p>
+<h2 id="data-contract">Data contract</h2>
+<p>The key boundary is <code>data/enriched/</code>. Once
+<code>nta_code</code> + <code>nta_name</code> are attached, every
+downstream stage treats NTAs as the primary key and is source-agnostic.
+Adding a 5th dataset (e.g. subway access) is a localized change: new
+cleaner block in <code>Clean.scala</code>, UDF application in
+<code>Geocode.scala</code>, aggregate in <code>Features.scala</code>,
+column in <code>Score.scala</code> / <code>Analytics.scala</code>,
+figure in <code>figures.js</code>.</p>
+<p>Score + analytics stages write <strong>single-file parquet</strong>
+(<code>.coalesce(1)</code> then rename). Clean / Geocode / Features
+write standard part-file directories because Spark reads them natively
+downstream.</p>
+<h2 id="build">Build</h2>
+<p>There is no compile step. The Scala jobs are run interpreted via
+<code>spark-shell -i &lt;script&gt;.scala</code>, so
+<code>make pipeline</code> is the full build-and-run. The first
+invocation of <code>make geocode</code> resolves
+<code>org.locationtech.jts:jts-core:1.19.0</code> through ivy and caches
+it in <code>~/.ivy2/</code> (~5 MB); subsequent runs are offline.
+<code>make setup</code> installs the single Python dependency
+(<code>requests</code>) for the downloaders.</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> setup               <span class="co"># pip install requests (one-time)</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="co"># no javac / sbt / mvn step: spark-shell -i compiles on the fly</span></span></code></pre></div>
+<h2 id="running-the-full-pipeline">Running the full pipeline</h2>
+<h3 id="one-time-setup">One-time setup</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> setup               <span class="co"># pip install requests</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> download            <span class="co"># ~570 MB of CSVs into data/raw/</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> geo-download        <span class="co"># NTA GeoJSON + population template into data/geo/</span></span></code></pre></div>
+<h3 id="batch-pipeline">Batch pipeline</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> pipeline            <span class="co"># Clean .&gt; Geocode .&gt; Features .&gt; Score .&gt; Analytics</span></span></code></pre></div>
+<h3 id="running-on-nyu-dataproc">Running on NYU Dataproc</h3>
+<p>The same <code>make pipeline</code> works on the Dataproc master VM,
+but two cluster defaults need overriding:</p>
+<ol type="1">
+<li>Dataproc’s <code>spark-defaults.conf</code> sets
+<code>spark.submit.deployMode=cluster</code>, which is incompatible with
+<code>--master local[*]</code> — pass <code>--deploy-mode client</code>
+into <code>spark-shell</code>.</li>
+<li><code>fs.defaultFS</code> is HDFS, so bare paths resolve as
+<code>hdfs://…</code>. Prefix <code>DATA_ROOT</code> with
+<code>file://</code> to read/write the local filesystem.</li>
+</ol>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> pipeline <span class="dt">\</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  SPARK_SHELL=<span class="st">&quot;spark-shell --deploy-mode client&quot;</span> <span class="dt">\</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  DATA_ROOT=<span class="st">&quot;file:///home/&lt;user&gt;/bigdataproject/data&quot;</span></span></code></pre></div>
+<p>This runs on the master node only (<code>local[*]</code>) — the
+worker nodes are idle. To actually use the cluster, submit each stage
+with <code>make dataproc-submit</code> (wraps
+<code>gcloud dataproc jobs submit spark</code>) or set
+<code>SPARK_MASTER=yarn</code> and stage inputs to HDFS
+(<code>hdfs dfs -put data/raw /user/&lt;user&gt;/data/</code>, then
+<code>DATA_ROOT=hdfs:///user/&lt;user&gt;/data</code>).</p>
+<h4 id="hdfs-data-location">HDFS data location</h4>
+<p>The full <code>data/</code> tree is mirrored on HDFS at
+<code>hdfs:///user/yj2761_nyu_edu/bigdataproject/data/</code>, uploaded
+once via:</p>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ex">hdfs</span> dfs <span class="at">-mkdir</span> <span class="at">-p</span> /user/yj2761_nyu_edu/bigdataproject</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hdfs</span> dfs <span class="at">-put</span> <span class="at">-f</span> data /user/yj2761_nyu_edu/bigdataproject/</span></code></pre></div>
+<p>Layout on HDFS mirrors the local one:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>HDFS path</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>hdfs:///user/yj2761_nyu_edu/bigdataproject/data/raw/</code></td>
+<td>4 source CSVs (<code>nypd_complaints.csv</code>,
+<code>dohmh_inspections.csv</code>, <code>nyc311_food.csv</code>,
+<code>zori_zip.csv</code>)</td>
+</tr>
+<tr class="even">
+<td><code>hdfs:///user/yj2761_nyu_edu/bigdataproject/data/geo/</code></td>
+<td><code>nta.geojson</code>, <code>nta_population.csv</code>,
+<code>zip_to_nta.csv</code></td>
+</tr>
+<tr class="odd">
+<td><code>hdfs:///user/yj2761_nyu_edu/bigdataproject/data/cleaned/{crime,restaurants,complaints311,rent}/</code></td>
+<td>post-<code>Clean.scala</code> parquet dirs</td>
+</tr>
+<tr class="even">
+<td><code>hdfs:///user/yj2761_nyu_edu/bigdataproject/data/enriched/{crime,restaurants,complaints311,rent}/</code></td>
+<td>post-<code>Geocode.scala</code> parquet dirs (every row has
+<code>nta_code</code>)</td>
+</tr>
+<tr class="odd">
+<td><code>hdfs:///user/yj2761_nyu_edu/bigdataproject/data/scores/neighborhood_features.parquet/</code></td>
+<td>post-<code>Features.scala</code></td>
+</tr>
+<tr class="even">
+<td><code>hdfs:///user/yj2761_nyu_edu/bigdataproject/data/scores/newcomer_score.parquet</code></td>
+<td>post-<code>Score.scala</code>, single-file parquet</td>
+</tr>
+<tr class="odd">
+<td><code>hdfs:///user/yj2761_nyu_edu/bigdataproject/data/analytics/*.parquet</code></td>
+<td>9 single-file dashboard tables</td>
+</tr>
+</tbody>
+</table>
+<h3 id="where-to-find-the-results">Where to find the results</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Stage</th>
+<th>Output path</th>
+<th>Format</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>make download</code></td>
+<td><code>data/raw/*.csv</code></td>
+<td>raw CSVs</td>
+</tr>
+<tr class="even">
+<td><code>make geo-download</code></td>
+<td><code>data/geo/nta.geojson</code>,
+<code>data/geo/nta_population.csv</code></td>
+<td>GeoJSON + CSV</td>
+</tr>
+<tr class="odd">
+<td><code>make clean</code></td>
+<td><code>data/cleaned/{crime,restaurants,complaints311,rent}/</code></td>
+<td>Spark parquet dirs</td>
+</tr>
+<tr class="even">
+<td><code>make geocode</code></td>
+<td><code>data/enriched/{crime,restaurants,complaints311,rent}/</code>,
+<code>data/geo/zip_to_nta.csv</code></td>
+<td>Spark parquet dirs + CSV</td>
+</tr>
+<tr class="odd">
+<td><code>make features</code></td>
+<td><code>data/scores/neighborhood_features.parquet/</code></td>
+<td>Spark parquet dir</td>
+</tr>
+<tr class="even">
+<td><code>make score</code></td>
+<td><code>data/scores/newcomer_score.parquet</code></td>
+<td>single file (read by frontend)</td>
+</tr>
+<tr class="odd">
+<td><code>make analytics</code></td>
+<td><code>data/analytics/*.parquet</code></td>
+<td>nine single-file tables</td>
+</tr>
+<tr class="even">
+<td><code>make web</code></td>
+<td><a href="http://localhost:5173/web/"
+class="uri">http://localhost:5173/web/</a> (map), <a
+href="http://localhost:5173/web/dashboard.html"
+class="uri">http://localhost:5173/web/dashboard.html</a>
+(dashboard)</td>
+<td>browser</td>
+</tr>
+</tbody>
+</table>
+<p>Wall time on an 8-core laptop: ~1 min <code>clean</code>, ~45 s
+<code>geocode</code> (JTS PIP on ~500k points), ~12 s
+<code>features</code>, ~5 s <code>score</code>, ~10 s
+<code>analytics</code>.</p>
+<h3 id="serve-the-static-site">Serve the static site</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> web                 <span class="co"># http://localhost:5173</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="co"># equivalent: npx http-server . -p 5173</span></span></code></pre></div>
+<p>Open <a href="http://localhost:5173/web/"
+class="uri">http://localhost:5173/web/</a>. Click <strong>Open analytics
+dashboard</strong> for the five-figure dashboard.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>Java 11</strong>, required by Spark.</li>
+<li><strong>Apache Spark 3.5</strong>, Scala jobs run via
+<code>spark-shell -i</code>. First run pulls
+<code>org.locationtech.jts:jts-core:1.19.0</code> via ivy into
+<code>~/.ivy2</code>.</li>
+<li><strong>Python 3.11+</strong>, only for
+<code>data_ingest/alexj/*.py</code>; single dependency
+<code>requests</code>.</li>
+</ul>
+<h2 id="orchestration-makefile">Orchestration
+(<code>Makefile</code>)</h2>
+<p>Every target wraps
+<code>spark-shell $(SPARK_OPTS) -i &lt;script&gt;.scala</code>, with
+<code>--packages</code> as needed (JTS for geocode).
+<code>DATA_ROOT ?= $(PWD)/data</code>. <code>SPARK_MASTER</code>
+defaults to <code>local[*]</code>.</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Target</th>
+<th>Runs</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>make setup</code></td>
+<td><code>pip install requests</code></td>
+</tr>
+<tr class="even">
+<td><code>make download</code></td>
+<td><code>data_ingest/alexj/download.py</code></td>
+</tr>
+<tr class="odd">
+<td><code>make geo-download</code></td>
+<td><code>data_ingest/alexj/geo_download.py</code></td>
+</tr>
+<tr class="even">
+<td><code>make clean</code></td>
+<td><code>Clean.scala</code></td>
+</tr>
+<tr class="odd">
+<td><code>make geocode</code></td>
+<td><code>Geocode.scala</code> (with JTS)</td>
+</tr>
+<tr class="even">
+<td><code>make features</code></td>
+<td><code>Features.scala</code></td>
+</tr>
+<tr class="odd">
+<td><code>make score</code></td>
+<td><code>Score.scala</code></td>
+</tr>
+<tr class="even">
+<td><code>make analytics</code></td>
+<td><code>Analytics.scala</code></td>
+</tr>
+<tr class="odd">
+<td><code>make pipeline</code></td>
+<td>clean .&gt; geocode .&gt; features .&gt; score .&gt; analytics</td>
+</tr>
+<tr class="even">
+<td><code>make profile-first</code></td>
+<td><code>FirstCode.scala</code></td>
+</tr>
+<tr class="odd">
+<td><code>make profile-counts</code></td>
+<td><code>CountRecs.scala</code></td>
+</tr>
+<tr class="even">
+<td><code>make web</code></td>
+<td>static server on <code>:5173</code></td>
+</tr>
+<tr class="odd">
+<td><code>make clean-derived</code></td>
+<td>wipe cleaned/enriched/scores/analytics</td>
+</tr>
+<tr class="even">
+<td><code>make clean-data</code></td>
+<td>wipe everything under <code>$(DATA_ROOT)</code> (destructive)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="scalability">Scalability</h2>
+<h3 id="spark_tune-same-flags-for-every-stage"><code>SPARK_TUNE</code>
+(same flags for every stage)</h3>
+<p>Defined once in the Makefile, passed via
+<code>spark-shell --conf</code> so configs live in one place.</p>
+<p><strong>Shuffle partitions: 8, not 200.</strong> Spark’s default is
+calibrated for clusters. On an 8-core laptop with ~500k rows, 200
+partitions means ~2,500 rows each and task dispatch dominates. 8 = one
+per core matches physical parallelism.</p>
+<p><strong>AQE on explicitly</strong> (<code>adaptive.enabled</code>,
+<code>coalescePartitions.enabled</code>, <code>skewJoin.enabled</code>).
+Default in Spark 3.5 but set explicitly so intent survives upgrades.
+Coalescing matters because even 8 starting partitions can end up
+under-filled after <code>.dropna()</code> / <code>.filter()</code>.</p>
+<p><strong>Broadcast join threshold: 50 MB</strong> (up from 10 MB
+default) so small lookup tables auto-broadcast without explicit
+<code>broadcast()</code> hints. <code>zip_to_nta.csv</code> is ~15 KB;
+the JTS polygon array (~5 MB serialized) is broadcast explicitly via
+<code>sparkContext.broadcast(...)</code> because it is not a
+DataFrame.</p>
+<p><strong>What we deliberately do not configure:</strong>
+<code>.cache()</code> is avoided on the batch path because each stage
+reads its Parquet input once and writes once;
+<code>Analytics.scala</code> is the lone exception (one cached DataFrame
+feeds nine outputs). No checkpointing, no off-heap, no G1GC tuning; the
+pipeline is short enough that <code>make &lt;stage&gt;</code> is the
+recovery story, and those knobs would be cargo-culting at this data
+size.</p>
+<h3 id="measured-scaling-reference-wsl2-intel-8-cores-16-gb">Measured
+scaling (reference, WSL2 Intel, 8 cores, 16 GB)</h3>
+<p>The original PySpark bench harness was removed during the Scala port.
+Reference numbers from that run:</p>
+<p><strong>Crime (579,561 rows cleaned):</strong></p>
+<table>
+<thead>
+<tr class="header">
+<th>Sample</th>
+<th>Rows</th>
+<th>Time (s)</th>
+<th>Throughput</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>10%</td>
+<td>57,850</td>
+<td>4.1</td>
+<td>~14,100 rows/s</td>
+</tr>
+<tr class="even">
+<td>50%</td>
+<td>289,180</td>
+<td>9.7</td>
+<td>~29,800 rows/s</td>
+</tr>
+<tr class="odd">
+<td>100%</td>
+<td>578,202</td>
+<td>14.9</td>
+<td>~38,800 rows/s</td>
+</tr>
+</tbody>
+</table>
+<p>Scaling efficiency 2.74 (super-linear): throughput increases with
+size because fixed startup cost (JVM warmup, Ivy resolve, CSV schema
+inference) amortizes.</p>
+<p><strong>Restaurants (295,723 rows cleaned):</strong></p>
+<table>
+<thead>
+<tr class="header">
+<th>Sample</th>
+<th>Rows</th>
+<th>Time (s)</th>
+<th>Throughput</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>10%</td>
+<td>27,850</td>
+<td>3.2</td>
+<td>~8,700 rows/s</td>
+</tr>
+<tr class="even">
+<td>50%</td>
+<td>139,240</td>
+<td>6.4</td>
+<td>~21,800 rows/s</td>
+</tr>
+<tr class="odd">
+<td>100%</td>
+<td>278,482</td>
+<td>9.1</td>
+<td>~30,600 rows/s</td>
+</tr>
+</tbody>
+</table>
+<p>Scaling efficiency 2.85 (super-linear).</p>
+<p><strong>Takeaways:</strong> fixed overhead (~3 s) dominates at small
+sizes; near-linear work beyond that; no memory pressure at 100% (no
+throughput collapse, so no spill). To reproduce today, add
+<code>.sample(false, f, 42L)</code> after <code>readCsv(...)</code> in
+<code>Clean.scala</code> and <code>time make clean</code>. If throughput
+drops 50% .&gt; 100% on rerun, investigate in order: driver memory (bump
+<code>spark.driver.memory</code>), GC pauses (enable G1 and watch
+<code>:4040</code>), partition skew after <code>.na.drop()</code>.</p>
+<h2 id="findings-and-insights">Findings and insights</h2>
+<p>What the dashboard surfaces once the pipeline finishes. The
+correlation heatmap (<code>correlation.parquet</code>) and the
+rent-vs-predictor OLS tables (<code>rent_vs_feature_ols.parquet</code>)
+are where most of these come from.</p>
+<ol type="1">
+<li><p><strong>Rent is weakly, not strongly, correlated with
+safety.</strong> <code>median_rent_zori</code> vs
+<code>crimes_per_1k</code> has Pearson r approximately -0.31 across the
+~260 NTAs, and the OLS R^2 sits around 0.10. The folk model (“expensive
+neighborhoods are safe neighborhoods”) is only a 10% explanation; the
+other 90% is geography, housing stock age, and zoning. This is the first
+thing a newcomer should internalize: do not proxy safety by
+rent.</p></li>
+<li><p><strong>Restaurant inspection scores barely track anything
+else.</strong> <code>avg_score</code> has the lowest off-diagonal
+correlations in the 6x6 heatmap (|r| &lt; 0.15 against rent, crime, and
+311). Health-code compliance appears to be a per-venue operational
+trait, not a neighborhood trait. This flattens <code>food_safety</code>
+as a differentiator between NTAs and was the reason it got 0.25 weight
+instead of 0.33 (see the <code>Score.scala</code> iteration
+notes).</p></li>
+<li><p><strong>311 food complaints are a density signal, not a
+cleanliness signal.</strong> <code>n_complaints</code> correlates
+roughly r approximately +0.55 with raw restaurant count per NTA. Central
+Manhattan has “bad” cleanliness in this data because there are more
+places where food can be bad, and more people inclined to call 311.
+Per-capita normalization (<code>complaints_per_1k</code>) dampens it but
+does not fully remove the bias, which is why <code>cleanliness</code>
+carries only 0.15 weight.</p></li>
+<li><p><strong>Outlier: the Battery / Governors / Ellis / Liberty
+NTA.</strong> Grouped into one NTA for ~260-polygon reasons but
+essentially uninhabited. It had 4 inspections with an unrealistically
+low <code>avg_score</code> of 1.25 and no ZORI rent, so before the
+data-starved gate was added (<code>Score.scala:MIN_INSPECTIONS</code>)
+its composite pinned to the city maximum and compressed every other
+NTA’s 0-100 score. The gate nulls the score for NTAs with no rent AND
+fewer than 20 inspections; 3-5 NTAs per run are suppressed this
+way.</p></li>
+<li><p><strong>Stuyvesant Town and a handful of Manhattan NTAs have no
+ZORI at all.</strong> Zillow requires an active single-family +
+multi-family listing threshold per ZIP, which Stuy Town (~11,000
+rent-stabilized units, ~zero active MLS listings) does not meet. Without
+an override these come out NULL on affordability, get mean-imputed, and
+look “average” on rent despite being $5k+/mo apartments.
+<code>Features.scala:RENT_OVERRIDES</code> patches four of these from
+contemporary listing aggregators with
+<code>median_rent_imputed = true</code> so downstream consumers can
+treat them separately.</p></li>
+</ol>
+<p>Connecting to broader context: New York’s 2020 NTA boundaries were
+drawn for statistical stability (~15-30k residents each) by NYC DCP, so
+small residential enclaves like Stuy Town or Chinatown-Two Bridges get
+grouped into NTAs whose centroid lies elsewhere. Any rent-vs-feature
+story inherits that grouping, which is why the OLS explains only a
+sliver of variance. A ZCTA-level model (USPS ZIP geography +
+Census-bureau areal weights) would likely lift R^2 for rent-vs-safety
+substantially, at the cost of more fragile polygon data. This is the
+single biggest methodological lever left in the pipeline.</p>
+<h2 id="ethical-guardrails-and-governance">Ethical guardrails and
+governance</h2>
+<p>Every dataset here encodes a social process, not a ground truth.
+Treating them as neutral is itself a bias.</p>
+<h3 id="known-biases-in-each-input">Known biases in each input</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Dataset</th>
+<th>What it actually measures</th>
+<th>Bias direction</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>NYPD Complaints</td>
+<td>Crimes <strong>reported to and recorded by</strong> NYPD</td>
+<td>Over-policed neighborhoods (historically lower-income,
+higher-minority) show inflated totals; under-policed and under-reporting
+neighborhoods show deflated totals. The data reflects enforcement as
+much as criminality.</td>
+</tr>
+<tr class="even">
+<td>DOHMH Restaurant Inspections</td>
+<td>Inspections <strong>performed</strong>, not inspection-worthy
+conditions</td>
+<td>Inspection frequency varies by cuisine, prior violations, and
+borough. NTAs with more chain restaurants (more scheduled inspections)
+look better controlled; independent-heavy NTAs look noisier.</td>
+</tr>
+<tr class="odd">
+<td>311 Food complaints</td>
+<td>Who <strong>calls 311</strong>, not who gets sick</td>
+<td>Correlates with English fluency, tenure, age, and civic-engagement
+norms. Immigrant-heavy and renter-heavy NTAs under-report; gentrifying
+NTAs over-report.</td>
+</tr>
+<tr class="even">
+<td>Zillow ZORI</td>
+<td><strong>Market-rate listings</strong> aggregated across Zillow’s
+inventory</td>
+<td>Excludes rent-stabilized and rent-controlled units (~44% of NYC
+rental stock per NYC HPD 2023). Missing where listings are sparse (Stuy
+Town, Chinatown-Two Bridges). Biases affordability <em>upward</em> in
+mixed-stock neighborhoods.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="what-the-pipeline-does-about-this">What the pipeline does about
+this</h3>
+<ul>
+<li><strong>Per-capita normalization.</strong>
+<code>crimes_per_1k</code> and <code>complaints_per_1k</code> are
+computed from NYC DCP population (<code>Features.scala</code>) so raw
+volume differences between Manhattan and Staten Island do not dominate.
+This mitigates but does not remove reporting bias.</li>
+<li><strong>Missing-signal neutrality.</strong> In
+<code>Score.scala</code>, NTAs missing a feature have that feature
+imputed with the city mean <strong>before</strong> z-scoring, so they
+stay at z approximately 0 on that axis instead of being penalized for
+the absence. Absence of data is not absence of a quality.</li>
+<li><strong>Data-starved gate
+(<code>Score.scala:MIN_INSPECTIONS</code>).</strong> NTAs with no ZORI
+rent AND fewer than 20 inspections have <code>newcomer_score</code>
+nulled entirely. Publishing a number for uninhabited islands or
+data-sparse NTAs would overclaim; the dashboard renders them as
+“Unscored.”</li>
+<li><strong><code>median_rent_imputed</code> flag.</strong> Overrides in
+<code>Features.scala:RENT_OVERRIDES</code> are surfaced as a boolean
+column rather than silently patched, so the dashboard can display them
+with different styling and the provenance stays auditable.</li>
+<li><strong>Transparent, non-learned scoring.</strong>
+<code>Score.scala</code> is a weighted z-score with the weights at the
+top of the file in a one-map <code>WEIGHTS</code>. Anyone can retune and
+rerun <code>make score</code> in seconds. No learned model means no
+opaque feature interactions, no training-set leakage, and no model card
+to chase.</li>
+</ul>
+<h3 id="alternatives-considered">Alternatives considered</h3>
+<ul>
+<li><strong>Down-weight NYPD complaints.</strong> Replace raw
+<code>crimes_per_1k</code> with a blend of reported crime and National
+Crime Victimization Survey estimates, which are enforcement-independent.
+Out of scope for this project (NCVS is not NTA-level) but a natural next
+step.</li>
+<li><strong>Multi-profile scores.</strong> One <code>WEIGHTS</code> map
+is a single user archetype (a generic newcomer).
+<code>Score.scala</code> could emit three parallel scores (student,
+family, retiree) with different weightings, and the frontend could let
+users pick. Plumbing exists; just needs three maps instead of one.</li>
+<li><strong>Sensitivity sweep.</strong> Rerun <code>Score.scala</code>
+with each weight perturbed by +/- 20% and report rank-stability per NTA.
+NTAs whose rank flips under small weight changes should be flagged in
+the UI as “weight-sensitive.”</li>
+<li><strong>Equity-adjusted crime signal.</strong> Residualize
+<code>crimes_per_1k</code> on per-NTA policing intensity (NYPD
+patrol-hours, publicly available) before z-scoring, so the metric
+captures crime net of enforcement. Open question: patrol-hour data is
+lagged and coarse-grained, and conditioning on it can itself introduce
+bias.</li>
+</ul>
+<h3 id="what-this-project-deliberately-does-not-do">What this project
+deliberately does not do</h3>
+<ul>
+<li><strong>No personally identifying information</strong> is loaded or
+written at any stage. NYPD <code>CMPLNT_NUM</code> and DOHMH
+<code>CAMIS</code> are opaque identifiers; no lat/lon is rounded tighter
+than the source.</li>
+<li><strong>No protected-attribute inference.</strong> NTAs are not
+labelled by demographic composition anywhere in the ETL, so the score
+cannot condition on race, income, or immigration status even
+accidentally.</li>
+<li><strong>No absolute claims.</strong> The 0 to 100 score is
+explicitly relative, and the README and dashboard both say so. A
+newcomer reading “82/100 on affordability” should take it as “less
+expensive than most NYC NTAs given ZORI”, not as a universal
+affordability statement.</li>
+</ul>
+<h2 id="design-decisions-and-tradeoffs">Design decisions and
+tradeoffs</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Decision</th>
+<th>Rationale</th>
+<th>Tradeoff</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Scala + Spark for every computational stage</td>
+<td>Single-language big-data surface; every stage is horizontally
+scalable on a Spark cluster.</td>
+<td>Score/analytics on ~260 rows adds driver startup time;
+accepted.</td>
+</tr>
+<tr class="even">
+<td>Python only in <code>data_ingest/</code></td>
+<td>HTTP retries / streaming / Socrata paging are what
+<code>requests</code> is for.</td>
+<td>One more runtime at setup. One-shot, acceptable.</td>
+</tr>
+<tr class="odd">
+<td>No backend</td>
+<td>Scala writes parquet, JS reads parquet, Plotly renders. Fewer
+tiers.</td>
+<td>Frontend depends on hyparquet over a CDN.</td>
+</tr>
+<tr class="even">
+<td>JTS broadcast UDF (not Sedona)</td>
+<td>Pure-Java jar, zero deps, 260 polygons x N points is trivial with
+envelope pre-filter.</td>
+<td>Revisit at 10x volume; one-line UDF swap.</td>
+</tr>
+<tr class="odd">
+<td>Single-file parquet for score + analytics</td>
+<td>Predictable URLs, no manifest needed.</td>
+<td><code>.coalesce(1)</code> forces one reducer on write; fine at &lt;1
+MB.</td>
+</tr>
+<tr class="even">
+<td>NTAs (2020) as the unit</td>
+<td>Official NYC definition, public GeoJSON.</td>
+<td>Colloquial neighborhood names do not always map 1:1.</td>
+</tr>
+<tr class="odd">
+<td>ZIP .&gt; NTA derived from restaurants</td>
+<td>Avoids a ZCTA shapefile dependency; derivation is Scala.</td>
+<td>Sparse ZIPs map noisily.</td>
+</tr>
+<tr class="even">
+<td>Parquet everywhere</td>
+<td>Zero infra, columnar, browser-readable via hyparquet.</td>
+<td>No SQL surface outside the Spark REPL.</td>
+</tr>
+<tr class="odd">
+<td>Weighted z-score, not a learned model</td>
+<td>Transparent, retunable by editing one map.</td>
+<td>Sensitive to outliers.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="extending-the-system">Extending the system</h2>
+<ul>
+<li><strong>Add a dataset.</strong> Downloader step in
+<code>download.py</code>, cleaner block in <code>Clean.scala</code>
+writing <code>data/cleaned/&lt;name&gt;/</code>, UDF application in
+<code>Geocode.scala</code>, aggregate in <code>Features.scala</code>,
+optional weighted term in <code>Score.scala</code>. For dashboard
+coverage, add a row to <code>Analytics.scala</code>’s
+<code>METRICS</code> and a figure in
+<code>web/lib/figures.js</code>.</li>
+<li><strong>Add a team member.</strong> Mirror
+<code>data_ingest/alexj/</code>, <code>etl_code/alexj/</code>,
+<code>profiling_code/alexj/</code> under their username; Makefile
+targets follow the same pattern.</li>
+<li><strong>Replace ZIP .&gt; NTA with a real ZCTA join.</strong> Drop a
+ZCTA GeoJSON at <code>data/geo/zcta.geojson</code> and rewrite the
+ZIP-to-NTA section of <code>Geocode.scala</code> to do area-weighted
+intersection. Downstream unchanged.</li>
+</ul>
+<h2 id="future-work">Future work</h2>
+<ul>
+<li><strong>Alternative scoring models.</strong> Replace the weighted
+z-score with a learned ranking model, or ship multi-profile scores
+(student / family / retiree) by swapping the <code>WEIGHTS</code>
+map.</li>
+<li><strong>Apache Sedona for the spatial join.</strong> JTS in a
+broadcast UDF is more than enough for ~260 polygons; Sedona is a drop-in
+upgrade if polygon count or point volume grows by an order of
+magnitude.</li>
+<li><strong>ZCTA-based ZIP .&gt; NTA.</strong> Replace the
+restaurant-derived lookup with a ZCTA shapefile + area-weighted
+intersection.</li>
+<li><strong>Additional signals.</strong> Subway access (MTA GTFS), park
+coverage (NYC Parks GeoJSON), school quality (DOE reports). Each plugs
+in as a downloader + cleaner block + <code>Features.scala</code>
+aggregate + optional <code>Score.scala</code> weight.</li>
+</ul>
+<h2 id="notes">Notes</h2>
+<ul>
+<li><strong>Population is optional.</strong> Drop a populated CSV at
+<code>data/geo/nta_population.csv</code> (columns
+<code>nta_code,nta_name,population</code>) and
+<code>Features.scala</code> will compute per-capita rates. Otherwise raw
+totals are used.</li>
+<li><strong>No Python at serve time.</strong> Dashboard and map are pure
+static files; Python runtime is only <code>requests</code> in the two
+downloaders.</li>
+</ul>
+</body>
+</html>
