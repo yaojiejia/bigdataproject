@@ -250,6 +250,42 @@ make geo-download        # NTA GeoJSON + population template into data/geo/
 ```bash
 make pipeline            # Clean .> Geocode .> Features .> Score .> Analytics
 ```
+### Running on NYU Dataproc
+
+The same `make pipeline` works on the Dataproc master VM, but two cluster defaults need overriding:
+
+1. Dataproc's `spark-defaults.conf` sets `spark.submit.deployMode=cluster`, which is incompatible with `--master local[*]` — pass `--deploy-mode client` into `spark-shell`.
+2. `fs.defaultFS` is HDFS, so bare paths resolve as `hdfs://…`. Prefix `DATA_ROOT` with `file://` to read/write the local filesystem.
+
+```bash
+make pipeline \
+  SPARK_SHELL="spark-shell --deploy-mode client" \
+  DATA_ROOT="file:///home/<user>/bigdataproject/data"
+```
+
+This runs on the master node only (`local[*]`) — the worker nodes are idle. To actually use the cluster, submit each stage with `make dataproc-submit` (wraps `gcloud dataproc jobs submit spark`) or set `SPARK_MASTER=yarn` and stage inputs to HDFS (`hdfs dfs -put data/raw /user/<user>/data/`, then `DATA_ROOT=hdfs:///user/<user>/data`).
+
+#### HDFS data location
+
+The full `data/` tree is mirrored on HDFS at `hdfs:///user/yj2761_nyu_edu/bigdataproject/data/`, uploaded once via:
+
+```bash
+hdfs dfs -mkdir -p /user/yj2761_nyu_edu/bigdataproject
+hdfs dfs -put -f data /user/yj2761_nyu_edu/bigdataproject/
+```
+
+Layout on HDFS mirrors the local one:
+
+| HDFS path | Contents |
+|---|---|
+| `hdfs:///user/yj2761_nyu_edu/bigdataproject/data/raw/` | 4 source CSVs (`nypd_complaints.csv`, `dohmh_inspections.csv`, `nyc311_food.csv`, `zori_zip.csv`) |
+| `hdfs:///user/yj2761_nyu_edu/bigdataproject/data/geo/` | `nta.geojson`, `nta_population.csv`, `zip_to_nta.csv` |
+| `hdfs:///user/yj2761_nyu_edu/bigdataproject/data/cleaned/{crime,restaurants,complaints311,rent}/` | post-`Clean.scala` parquet dirs |
+| `hdfs:///user/yj2761_nyu_edu/bigdataproject/data/enriched/{crime,restaurants,complaints311,rent}/` | post-`Geocode.scala` parquet dirs (every row has `nta_code`) |
+| `hdfs:///user/yj2761_nyu_edu/bigdataproject/data/scores/neighborhood_features.parquet/` | post-`Features.scala` |
+| `hdfs:///user/yj2761_nyu_edu/bigdataproject/data/scores/newcomer_score.parquet` | post-`Score.scala`, single-file parquet |
+| `hdfs:///user/yj2761_nyu_edu/bigdataproject/data/analytics/*.parquet` | 9 single-file dashboard tables |
+
 
 ### Where to find the results
 
