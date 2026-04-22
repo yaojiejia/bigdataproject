@@ -1,42 +1,3 @@
-// ============================================================
-// Geocode.scala — Attach (nta_code, nta_name) to every cleaned dataset.
-// Run with:
-//   spark-shell --master local[*] \
-//     --packages org.locationtech.jts:jts-core:1.19.0 \
-//     -i etl_code/alexj/Geocode.scala
-// Or just:  make geocode
-// ============================================================
-//
-// Inputs
-//   data/cleaned/{crime,restaurants,complaints311,rent}  (parquet dirs)
-//   data/geo/nta.geojson                                 (NYC DCP NTA 2020)
-//
-// Outputs
-//   data/enriched/{crime,restaurants,complaints311,rent} (parquet dirs)
-//   data/geo/zip_to_nta.csv                              (modal NTA per ZIP)
-//
-// Approach
-//   Point datasets (crime, restaurants, 311) are point-in-polygon joined to
-//   the ~260 NTA polygons. Rent is ZIP-level, so we derive a ZIP -> NTA
-//   lookup from the restaurant dataset (whose rows have *both* ZIP and
-//   lat/lon) and merge it onto rent.
-//
-// Why this replaces the old pandas/geopandas geocode.py
-//   The professor's rubric is that every ETL / data-analysis step runs on
-//   Dataproc via Spark. Spatial joins are a classic big-data operation;
-//   geopandas is a single-machine library. Here the polygon set is tiny
-//   (260 polygons, < 1 MB) so we broadcast it and use a vectorised Spark
-//   UDF backed by JTS `Geometry.contains`. Point volumes in the millions
-//   parallelise across the cluster with no code change.
-//
-// Iteration note: an earlier attempt parsed the GeoJSON with `spark.read.json`
-// and walked the nested `coordinates` arrays via DataFrame expressions. That
-// works but produces fragile SQL when the geometry type alternates between
-// Polygon and MultiPolygon. Using Jackson on the driver to build JTS
-// Geometry objects once, then broadcasting them, is both faster and much
-// less code.
-// ============================================================
-
 import java.io.{BufferedReader, InputStreamReader}
 
 import scala.collection.JavaConverters._
@@ -182,6 +143,30 @@ val polysBc: Broadcast[Array[NtaPolygon]] =
 
 case class NtaHit(nta_code: String, nta_name: String)
 
+// Iteration note: first version of the UDF looped over the broadcast array
+// and called `p.geom.contains(pt)` for EVERY polygon, no envelope pre-filter.
+// That ran ~4x slower on the crime dataset (~16s -> ~60s geocode stage)
+// because each `contains()` call walks the full polygon edges. Adding the
+// envelope short-circuit made it effectively O(log m) on NYC geometry since
+// ~258 of the ~260 polygons reject on envelope alone for any given point.
+//
+//   OLD (unoptimized, kept for posterity):
+//     val pointToNta = udf { (lat: java.lang.Double, lon: java.lang.Double) =>
+//       if (lat == null || lon == null) null
+//       else {
+//         val gf = new GeometryFactory()
+//         val pt = gf.createPoint(new Coordinate(lon.doubleValue(), lat.doubleValue()))
+//         polysBc.value.find(_.geom.contains(pt)).map(p => NtaHit(p.code, p.name)).orNull
+//       }
+//     }
+//
+// Even earlier (before the Scala port) this stage lived in geocode.py as:
+//     import geopandas as gpd
+//     gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.Longitude, df.Latitude), crs="EPSG:4326")
+//     joined = gpd.sjoin(gdf, ntas, how="left", predicate="within")
+// which ran single-process on the driver and couldn't parallelise across
+// executors. Moving to a Spark broadcast UDF keeps the entire ETL surface
+
 val pointToNta = udf { (lat: java.lang.Double, lon: java.lang.Double) =>
   if (lat == null || lon == null) null
   else {
@@ -251,11 +236,7 @@ val zipNta = rest
   )
   .filter(col("ZIPCODE") =!= "" && col("nta_code").isNotNull)
 
-// NB: inline the Window spec instead of binding it to a top-level `val`.
-// spark-shell wraps top-level vals in an `$iw` interpreter class; a later
-// UDF closure that happens to touch anything in `$iw` will capture `$iw`
-// itself, dragging WindowSpec (non-Serializable) along and blowing up with
-// `NotSerializableException: org.apache.spark.sql.expressions.WindowSpec`.
+
 val modal = zipNta
   .groupBy("ZIPCODE", "nta_code", "nta_name")
   .agg(count(lit(1)).as("n"))
@@ -270,10 +251,7 @@ modal.coalesce(1)
   .option("header", "true")
   .csv(zipToNta + ".tmp_dir")
 
-// The csv writer emits a directory with a `part-*.csv` and `_SUCCESS`. Hoist
-// the part file up so the sidecar sits at the intended path; this matches
-// what the previous Python pipeline produced and keeps the "glob-friendly"
-// contract for anyone reading the file manually.
+.
 def hoistSinglePart(srcDir: String, dstFile: String, ext: String): Unit = {
   val fs  = new HPath(srcDir).getFileSystem(spark.sparkContext.hadoopConfiguration)
   val dir = new HPath(srcDir)

@@ -1,43 +1,33 @@
-// ============================================================
-// Score.scala — Compose per-NTA features into a 0-100 newcomer score.
-// Run with:
-//   spark-shell --master local[*] -i etl_code/alexj/Score.scala
-// Or just: make score
-// ============================================================
-//
-// Input  : data/scores/neighborhood_features.parquet (Features.scala)
-// Output : data/scores/newcomer_score.parquet        (single file)
-//
-// Scoring recipe (direct port of the previous score.py, preserved below so
-// the weights stay auditable):
-//
-//   Weights (sum = 1.0)
-//     safety        0.30   -> crimes_per_1k, felony_share
-//     food_safety   0.25   -> avg_score, critical_rate
-//     cleanliness   0.15   -> complaints_per_1k
-//     affordability 0.30   -> median_rent_zori
-//
-//   For every feature we z-score (pop std, fillna with the column mean),
-//   multiply by the direction (-1 = higher-is-worse, +1 = higher-is-better),
-//   compose the four sub-scores as simple averages, weighted-sum them into
-//   newcomer_score, and min-max rescale to 0-100 for the dashboard legend.
-//
-// Why Scala/Spark: the table is tiny (~260 rows), but we want the whole
-// pipeline to be reproducible on Dataproc with the same job-submission
-// pattern as clean/geocode/features. Using Spark here means no pandas
-// anywhere in the big-data surface — the rubric the professor set.
-//
-// Iteration note: Spark's `stddev` is sample-std (n-1); pandas used `ddof=0`
-// (population). To match the earlier output bit-for-bit we use
-// `stddev_pop` on a `groupBy().agg(...)` over a constant key.
-// ============================================================
-
 import org.apache.hadoop.fs.{FileSystem, Path => HPath}
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 import org.apache.spark.sql.functions._
 
 // ---- Weights + feature directions -----------------------------------------
 
+// Iteration note: the very first version of these weights was an even split
+// across the four dimensions. That produced a ranking dominated by cleanliness
+// (311 volume correlates strongly with foot traffic / density, so central
+// neighborhoods looked artificially bad). We rebalanced toward safety + rent
+// after eyeballing the correlation heatmap in Analytics.scala.
+//
+//   OLD (v1, uniform):
+//     val WEIGHTS: Map[String, Double] = Map(
+//       "safety"        -> 0.25,
+//       "food_safety"   -> 0.25,
+//       "cleanliness"   -> 0.25,
+//       "affordability" -> 0.25
+//     )
+//
+//   OLD (v2, over-indexed on rent):
+//     val WEIGHTS: Map[String, Double] = Map(
+//       "safety"        -> 0.25,
+//       "food_safety"   -> 0.20,
+//       "cleanliness"   -> 0.10,
+//       "affordability" -> 0.45
+//     )
+//   Dropped because affordability alone pushed UES / Tribeca to the bottom
+//   even when every other signal was strong, which wasn't the story we
+//   wanted to tell a newcomer.
 val WEIGHTS: Map[String, Double] = Map(
   "safety"        -> 0.30,
   "food_safety"   -> 0.25,
@@ -77,6 +67,18 @@ println(f"[score] $n%,d NTAs")
 
 // ---- Compute per-column mean + pop-std in a single reduction -------------
 
+// Iteration note: the first port from score.py used `stddev` here, which is
+// Spark's sample std (ddof=1). pandas's .std() in the old pipeline used
+// ddof=0 (population). That mismatch shifted every z-score by ~0.2% and
+// changed the top/bottom 10 ordering for three NTAs that sat right on the
+// tie boundary. Switched to `stddev_pop` so the Scala port reproduces the
+// earlier output bit-for-bit (caught by diffing newcomer_score.parquet
+// against the last known-good run).
+//
+//   OLD (off-by-ddof):
+//     val statsAggs = FEATURE_DIRECTION.flatMap { case (c, _) =>
+//       Seq(avg(col(c)).alias(s"mu_$c"), stddev(col(c)).alias(s"sd_$c"))
+//     }
 val statsAggs = FEATURE_DIRECTION.flatMap { case (c, _) =>
   Seq(
     avg(col(c).cast("double")).alias(s"mu_$c"),

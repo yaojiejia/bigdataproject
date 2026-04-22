@@ -1,33 +1,3 @@
-// ============================================================
-// Analytics.scala — Pre-compute every dashboard aggregate.
-// Run with:
-//   spark-shell --master local[*] -i etl_code/alexj/Analytics.scala
-// Or just: make analytics
-// ============================================================
-//
-// Input  : data/scores/newcomer_score.parquet (single file from Score.scala)
-// Output : data/analytics/*.parquet (single files — one per figure)
-//
-//   summary.parquet              one row per metric: mean, median, min, max, std, n_ntas
-//   distribution.parquet         24-bin histogram per metric
-//   top_bottom.parquet           top/bottom-10 NTAs per metric
-//   borough_box.parquet          5-number box-plot summary per (metric, borough)
-//   borough_points.parquet       raw NTA points behind each box plot (for jitter overlay)
-//   correlation.parquet          6x6 Pearson matrix on the input features
-//   rent_vs_feature_bins.parquet 10 quantile bins of each predictor, with median + IQR of rent
-//   rent_vs_feature_ols.parquet  OLS coefficients + R² per predictor
-//   rent_vs_feature_points.parquet  raw (x, rent) scatter per predictor
-//
-// Why this lives in Scala: the professor's rubric is that every analytical
-// step runs on Dataproc via Spark. The frontend is now a static bundle that
-// reads these parquet tables directly with hyparquet — no API layer. All the
-// stats/aggregations that used to be in Python / pandas happen here.
-//
-// Contract reminder: any column added/removed here MUST have a matching
-// change in web/lib/figures.js, which builds the Plotly specs from these
-// arrays. The shared palette + labels also live in figures.js.
-// ============================================================
-
 import org.apache.hadoop.fs.{FileSystem, Path => HPath}
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 import org.apache.spark.sql.expressions.Window
@@ -181,6 +151,25 @@ println(s"[analytics] wrote summary.parquet (${METRICS.size} metrics)")
 
 val N_BINS = 24
 
+// Iteration note: earlier versions of this block computed bin edges in the
+// browser after loading the raw per-NTA values. That meant every dashboard
+// load reparsed ~260 rows and recomputed min/max/width in JS — fine in
+// isolation, but it forced the parquet reader (hyparquet) to ship the raw
+// series over the wire per metric, and it duplicated binning logic between
+// here and web/lib/figures.js. Moving binning server-side (here) means the
+// dashboard fetches 5 metrics x 24 rows = 120 rows total and draws bars
+// directly.
+//
+//   OLD (binned in the browser):
+//     writeSingleParquet(
+//       withBorough.select(METRICS.map(m => col(m.column)): _*),
+//       s"$outDir/metrics_raw.parquet"
+//     )
+//     // ... then in figures.js:
+//     //   const lo = Math.min(...values); const hi = Math.max(...values);
+//     //   const width = (hi - lo) / 24;
+//     //   const counts = new Array(24).fill(0);
+//     //   values.forEach(v => counts[Math.min(23, Math.floor((v - lo) / width))]++);
 def distributionRows(m: MetricMeta): DataFrame = {
   val c = col(m.column).cast("double")
   val filt = withBorough.filter(c.isNotNull)
@@ -247,14 +236,8 @@ writeSingleParquet(topBottomDf, s"$outDir/top_bottom.parquet")
 println(s"[analytics] wrote top_bottom.parquet")
 
 // ============================================================
-// 4. borough_box.parquet — Tukey fences per (metric, borough)
+// 4. borough_box.parquet
 // ============================================================
-//
-// Plotly.js accepts pre-computed 5-number summaries when passed
-// {q1, median, q3, lowerfence, upperfence}. That means we don't need to
-// ship the per-NTA points if we don't want to — but we do ship them
-// separately (borough_points.parquet) so the dashboard can overlay
-// jittered markers if it wants to.
 
 def boroughBox(m: MetricMeta): DataFrame = {
   val c   = col(m.column).cast("double")
